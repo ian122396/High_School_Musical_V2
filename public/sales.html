@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>售票终端 - 学校汇演票务系统</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body class="page page--sales">
+    <header class="toolbar">
+      <div class="toolbar__group">
+        <h1>售票终端</h1>
+        <span class="toolbar__subtitle">选择项目 → 锁定座位 → 签发电子票</span>
+      </div>
+      <div class="toolbar__group">
+        <button class="button" id="btn-home" type="button">返回首页</button>
+        <button class="button button--danger" id="btn-logout" type="button">退出登录</button>
+      </div>
+    </header>
+
+    <main class="sales-layout">
+      <nav class="sales-tabs admin-tabs" role="tablist">
+        <button class="sales-tab admin-tab admin-tab--active" type="button" data-module="sales" aria-selected="true">
+          售票
+        </button>
+        <button class="sales-tab admin-tab" type="button" data-module="merch" aria-selected="false">文创售卖</button>
+        <button class="sales-tab admin-tab" type="button" data-module="checkin" aria-selected="false">检票</button>
+      </nav>
+
+      <section class="panel project-picker" aria-label="选择售票项目">
+        <div class="panel__heading">
+          <div>
+            <h2>当前项目</h2>
+            <p class="hint">选择后三个功能都会使用同一项目数据。</p>
+          </div>
+          <div class="project-picker__actions">
+            <select id="project-select"></select>
+            <button class="button" id="btn-refresh-projects" type="button">刷新项目</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="module module--sales panel panel--module" id="module-sales">
+        <div class="module-sales-grid">
+          <div class="module-sales-left">
+            <div class="panel">
+              <div class="panel__heading"><h2>售票</h2></div>
+              <div class="legend">
+                <span><span class="seat-badge" style="background:#2b8a3e"></span> 可售座位</span>
+                <span><span class="seat-badge" style="background:#ffd166"></span> 本机已锁定</span>
+                <span><span class="seat-badge" style="background:#cbd3de"></span> 他机锁定中</span>
+                <span><span class="seat-badge" style="background:#ffffff;border:1px solid #d8e2f1"></span> 已签发</span>
+                <span><span class="seat-badge" style="background:#d7deeb"></span> 未启用</span>
+              </div>
+              <div class="zone-summary">
+                <h4>按票价余票</h4>
+                <ul id="sales-zone-summary-list"></ul>
+              </div>
+              <div class="auto-select">
+                <label>
+                  选择价位
+                  <select id="auto-select-price"></select>
+                </label>
+                <label>
+                  选座人数
+                  <select id="auto-select-count">
+                    <option value="1">1 人</option>
+                    <option value="2">2 人</option>
+                    <option value="3">3 人</option>
+                    <option value="4">4 人</option>
+                    <option value="5">5 人</option>
+                  </select>
+                </label>
+                <button class="button button--primary" id="btn-auto-select" type="button">
+                  自动选座
+                </button>
+              </div>
+              <p class="hint">* 自动选座优先选择同排连续座位，如无符合条件的座位将保持当前选择。</p>
+              <p class="hint" id="project-hint">请选择项目后开始售票。</p>
+            </div>
+
+            <div class="panel panel--canvas">
+              <div class="stage-label" id="sales-stage-label">舞台</div>
+              <div id="sales-seat-canvas" class="seat-canvas">
+                <p class="placeholder">等待选择项目...</p>
+              </div>
+            </div>
+          </div>
+
+          <aside class="panel module-sales-sidebar">
+            <h2>已选座位</h2>
+            <ul id="selected-list" class="selected-list"></ul>
+            <div class="selected-summary">
+              <span>数量：<strong id="selected-count">0</strong></span>
+              <span>合计：<strong id="selected-total">¥0</strong></span>
+            </div>
+            <div class="selected-actions">
+              <button class="button button--link" id="btn-clear-selected" type="button">清空已选座位</button>
+            </div>
+            <p class="status-message" id="sales-status"></p>
+            <div class="panel">
+              <h3>签发与扫码</h3>
+              <div class="scan-area">
+                <video id="scan-video" autoplay playsinline muted></video>
+                <div id="scan-overlay" class="scan-overlay">等待签发指令...</div>
+                <canvas id="scan-canvas" class="hidden"></canvas>
+              </div>
+              <p class="hint">
+                * 点击列表中的“签发”按钮后开始扫描票面上的二维码，正确匹配后座位将自动标记为“已签发”。
+              </p>
+              <div class="form">
+                <label>
+                  手动票码验证
+                  <input id="manual-ticket-code" type="text" placeholder="输入票码并确认" />
+                </label>
+                <button class="button" id="btn-manual-confirm" type="button">确认签发</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel panel--module panel--merch-shop" id="module-merch" hidden>
+        <div class="panel__heading">
+          <div>
+            <h2>文创售卖</h2>
+            <p class="hint">选择商品加入购物车，线下收款后提交订单即可。</p>
+          </div>
+          <button class="button" id="btn-refresh-merch-sales" type="button">刷新商品</button>
+        </div>
+        <div class="merch-shop-grid">
+          <div class="merch-list merch-list--sales" id="sales-merch-products"></div>
+          <div class="merch-cart" id="merch-cart-panel">
+            <h3>购物车</h3>
+            <ul id="merch-cart-list" class="selected-list"></ul>
+            <label>
+              结账模式
+              <select id="merch-checkout-mode"></select>
+            </label>
+            <label>
+              支付方式
+              <select id="merch-payment-method"></select>
+            </label>
+            <label>
+              备注
+              <input id="input-merch-note" type="text" placeholder="可选" />
+            </label>
+            <div class="selected-summary">
+              <span>合计：<strong id="merch-cart-total">¥0.00</strong></span>
+            </div>
+            <button class="button button--primary" id="btn-submit-merch-order" type="button">
+              提交文创订单
+            </button>
+            <p class="status-message" id="merch-status"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--module panel--checkin" id="module-checkin" hidden>
+        <div class="panel__heading">
+          <div>
+            <h2>检票</h2>
+            <p class="hint">参照机场登机检票，支持摄像头扫码与手动输入。</p>
+          </div>
+          <div class="panel__actions">
+            <span id="checkin-stats">已检 0 / 总票数 0</span>
+            <button class="button" id="btn-refresh-checkin" type="button">刷新统计</button>
+            <button class="button button--secondary" id="btn-start-checkin" type="button">开始扫码</button>
+            <button class="button" id="btn-stop-checkin" type="button">停止扫码</button>
+          </div>
+        </div>
+        <div class="checkin-grid">
+          <div class="checkin-visual">
+            <div class="scan-area scan-area--checkin">
+              <video id="checkin-video" autoplay playsinline muted></video>
+              <div id="checkin-overlay" class="scan-overlay">等待检票...</div>
+              <canvas id="checkin-canvas" class="hidden"></canvas>
+            </div>
+            <div class="form">
+              <label>
+                手动检票
+                <input id="input-checkin-code" type="text" placeholder="输入票号后回车或点击检票" />
+              </label>
+              <button class="button button--primary" id="btn-submit-checkin" type="button">检票</button>
+            </div>
+            <div id="checkin-result" class="checkin-result">等待检票...</div>
+            <div class="panel">
+              <div class="panel__heading">
+                <h4>待重试 / 最近失败</h4>
+                <div class="panel__actions">
+                  <button class="button button--secondary" id="btn-retry-pending" type="button">全部重试</button>
+                  <button class="button button--link" id="btn-clear-pending" type="button">清空</button>
+                </div>
+              </div>
+              <ul id="pending-checkin-list" class="selected-list"></ul>
+            </div>
+          </div>
+          <div class="checkin-map">
+            <h3>座位可视化</h3>
+            <div id="checkin-seat-grid" class="seat-grid--checkin"></div>
+            <div class="legend legend--checkin">
+              <span><span class="seat-badge seat-badge--idle"></span>空闲（未售）</span>
+              <span><span class="seat-badge seat-badge--sold"></span>已签发未检</span>
+              <span><span class="seat-badge seat-badge--checked"></span>已检票</span>
+              <span><span class="seat-badge seat-badge--disabled"></span>未启用/无座位</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/sales.js" type="module"></script>
+  </body>
+</html>

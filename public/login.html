@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>登录 - 学校汇演票务系统</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body class="page page--auth">
+    <main class="card card--auth">
+      <h1 id="login-title">登录</h1>
+      <p class="hint" id="login-subtitle">请输入账号与密码，系统会根据权限进入对应界面。</p>
+      <form id="login-form" class="form">
+        <label>
+          用户名
+          <input type="text" id="input-username" autocomplete="username" required />
+        </label>
+        <label>
+          密码
+          <input type="password" id="input-password" autocomplete="current-password" required />
+        </label>
+        <button class="button button--primary" type="submit">登录</button>
+      </form>
+      <p class="hint" id="login-message"></p>
+      <a class="button button--link" href="/">返回首页</a>
+    </main>
+    <script src="/js/login.js" type="module"></script>
+  </body>
+</html>

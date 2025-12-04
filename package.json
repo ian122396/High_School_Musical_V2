@@ -1,0 +1,23 @@
+{
+  "name": "gewuqingchun",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "bwip-js": "^4.8.0",
+    "canvas": "^3.2.0",
+    "cookie": "^1.0.2",
+    "express": "^5.1.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
+    "uuid": "^13.0.0"
+  }
+}
