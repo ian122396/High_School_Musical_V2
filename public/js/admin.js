@@ -104,6 +104,9 @@ const btnSeatNext = document.getElementById('btn-seat-next');
 const seatPageInfo = document.getElementById('seat-page-info');
 const btnExportSeatsCsv = document.getElementById('btn-export-seats-csv');
 const btnExportSeatsPng = document.getElementById('btn-export-seats-png');
+const btnExportSeatsJson = document.getElementById('btn-export-seats-json');
+const btnExportProjectMenu = document.getElementById('btn-export-project-menu');
+const exportProjectMenu = document.getElementById('export-project-menu');
 const inputBatchPrice = document.getElementById('input-batch-price');
 const inputBatchRowStart = document.getElementById('input-batch-row-start');
 const inputBatchRowEnd = document.getElementById('input-batch-row-end');
@@ -2382,12 +2385,23 @@ const exportSeats = async (type) => {
   }
 };
 
-if (btnExportSeatsCsv) {
-  btnExportSeatsCsv.addEventListener('click', () => exportSeats('csv'));
-}
+['csv', 'png', 'json'].forEach((type) => {
+  document.querySelectorAll(`#btn-export-seats-${type}`).forEach((btn) => {
+    btn.addEventListener('click', () => exportSeats(type));
+  });
+});
 
-if (btnExportSeatsPng) {
-  btnExportSeatsPng.addEventListener('click', () => exportSeats('png'));
+// 导出菜单显隐
+if (btnExportProjectMenu && exportProjectMenu) {
+  btnExportProjectMenu.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = exportProjectMenu.hasAttribute('hidden');
+    exportProjectMenu.toggleAttribute('hidden', !isHidden);
+  });
+  document.addEventListener('click', () => {
+    exportProjectMenu.setAttribute('hidden', '');
+  });
+  exportProjectMenu.addEventListener('click', (e) => e.stopPropagation());
 }
 
 if (btnSyncProject) {

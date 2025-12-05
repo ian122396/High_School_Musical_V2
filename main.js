@@ -2741,6 +2741,18 @@ app.get('/api/projects/:projectId/export', requireRole('admin'), (req, res) => {
   res.json({ project: serializeProject(project) });
 });
 
+app.get('/api/projects/:projectId/export/json', requireRole('admin'), (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) {
+    return res.status(404).json({ error: '项目不存在' });
+  }
+  const payload = { project: serializeProject(project) };
+  const filename = `project-${project.id}.json`;
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(JSON.stringify(payload, null, 2));
+});
+
 app.get('/api/projects/:projectId/export/csv', requireRole('admin'), (req, res) => {
   const project = state.projects[req.params.projectId];
   if (!project) {
@@ -2996,7 +3008,8 @@ app.post('/api/projects/:projectId/import', requireRole('admin'), async (req, re
     return res.status(404).json({ error: '项目不存在' });
   }
   ensureProjectMetadata(project);
-  const payload = (req.body && (req.body.project || req.body)) || {};
+  const body = req.body || {};
+  const payload = (body && typeof body === 'object' && (body.project || body)) || {};
   if (!payload || typeof payload !== 'object') {
     return res.status(400).json({ error: '导入数据无效' });
   }
@@ -3009,9 +3022,23 @@ app.post('/api/projects/:projectId/import', requireRole('admin'), async (req, re
   if (payload.name && typeof payload.name === 'string' && payload.name.trim()) {
     project.name = payload.name.trim();
   }
-  const incomingSeats = payload.seats && typeof payload.seats === 'object' ? payload.seats : null;
+  let incomingSeats = null;
+  if (payload.seats && typeof payload.seats === 'object' && !Array.isArray(payload.seats)) {
+    incomingSeats = payload.seats;
+  } else if (Array.isArray(payload.seats)) {
+    // 兼容 seats 数组格式
+    incomingSeats = {};
+    payload.seats.forEach((seat) => {
+      if (!seat || typeof seat !== 'object') return;
+      const r = Number(seat.row);
+      const c = Number(seat.col);
+      if (Number.isInteger(r) && Number.isInteger(c)) {
+        incomingSeats[`r${r}-c${c}`] = { ...seat };
+      }
+    });
+  }
   if (!incomingSeats) {
-    return res.status(400).json({ error: '导入数据缺少座位信息' });
+    return res.status(400).json({ error: '导入数据缺少座位信息（需要 seats 对象或数组）' });
   }
   const allowedStatuses = ['disabled', 'available', 'locked', 'sold'];
   Object.entries(project.seats).forEach(([id, seat]) => {

@@ -76,6 +76,16 @@ const PLACEHOLDER_IMAGE =
   'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%23f2f4f8" rx="16"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%2399a5c2" font-size="24">No Image</text></svg>';
 
 const socket = io({ withCredentials: true, transports: ['websocket', 'polling'] });
+const BARCODE_FORMATS = [
+  'qr_code',
+  'aztec',
+  'data_matrix',
+  'pdf417',
+  'code_128',
+  'code_39',
+  'ean_13',
+  'upc_a',
+];
 
 let projects = [];
 let activeProject = null;
@@ -87,11 +97,13 @@ let mySocketId = null;
 let pendingIssue = null;
 let videoStream = null;
 let barcodeDetector = null;
+let jsQrDetector = null;
 let scanContext = null;
 let scanningLoopActive = false;
 let lastScannedCode = '';
 let lastScanTime = 0;
 let lastScanMessage = '等待签发指令...';
+let detectFailCount = 0;
 let zoneSummaryData = [];
 let merchCatalog = [];
 let checkoutModes = [];
@@ -104,6 +116,8 @@ let checkinLoopActive = false;
 let lastCheckinCode = '';
 let lastCheckinTime = 0;
 let pendingCheckins = [];
+let jsQrCheckinDetector = null;
+let checkinDetectFailCount = 0;
 
 if (btnClearSelected) {
   btnClearSelected.disabled = true;
@@ -1264,6 +1278,9 @@ const ensureScanner = async () => {
       audio: false,
     });
     videoEl.srcObject = videoStream;
+    if (videoEl.play) {
+      videoEl.play().catch(() => {});
+    }
   } catch (error) {
     const reason =
       error && error.name === 'NotAllowedError'
@@ -1274,17 +1291,61 @@ const ensureScanner = async () => {
   }
   if ('BarcodeDetector' in window) {
     try {
-      barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      try {
+        barcodeDetector = new window.BarcodeDetector({ formats: BARCODE_FORMATS });
+      } catch {
+        barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      }
       scanCanvas.width = 640;
       scanCanvas.height = 360;
       scanContext = scanCanvas.getContext('2d');
       startScanLoop();
     } catch (error) {
       barcodeDetector = null;
-      showStatus('无法初始化二维码识别，将启用手动输入。', true);
+      // 原生初始化失败时尝试 jsQR 回退
+      if (window.jsQR) {
+        scanCanvas.width = 640;
+        scanCanvas.height = 360;
+        scanContext = scanCanvas.getContext('2d');
+        jsQrDetector = {
+          detect: async (canvas) => {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return [];
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const result = window.jsQR(img.data, canvas.width, canvas.height, {
+              inversionAttempts: 'attemptBoth',
+            });
+            return result ? [{ rawValue: result.data }] : [];
+          },
+        };
+        barcodeDetector = jsQrDetector;
+        startScanLoop();
+      } else {
+        showStatus('无法初始化二维码识别，将启用手动输入。', true);
+      }
     }
   } else {
-    showStatus('浏览器暂不支持二维码识别，请使用手动输入。');
+    // Fallback：使用 jsQR 软件识别（需在页面引入 jsQR 脚本）
+    if (window.jsQR) {
+      scanCanvas.width = 640;
+      scanCanvas.height = 360;
+      scanContext = scanCanvas.getContext('2d');
+      jsQrDetector = {
+        detect: async (canvas) => {
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return [];
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const result = window.jsQR(img.data, canvas.width, canvas.height, {
+            inversionAttempts: 'attemptBoth',
+          });
+          return result ? [{ rawValue: result.data }] : [];
+        },
+      };
+      barcodeDetector = jsQrDetector;
+      startScanLoop();
+    } else {
+      showStatus('浏览器暂不支持二维码识别，请使用手动输入。');
+    }
   }
   return Boolean(barcodeDetector);
 };
@@ -1333,7 +1394,11 @@ const startCheckinScanner = async () => {
   }
   if ('BarcodeDetector' in window) {
     try {
-      checkinDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      try {
+        checkinDetector = new window.BarcodeDetector({ formats: BARCODE_FORMATS });
+      } catch {
+        checkinDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      }
       checkinCanvas.width = 640;
       checkinCanvas.height = 360;
       checkinContext = checkinCanvas.getContext('2d');
@@ -1342,10 +1407,55 @@ const startCheckinScanner = async () => {
       setCheckinOverlay('摄像头已就绪，开始扫码检票。', true);
       setCheckinResult('摄像头已就绪，开始扫码检票。', null);
     } catch (error) {
-      setCheckinResult('浏览器不支持扫码，请使用手动检票。', 'error');
+      // 回退 jsQR
+      if (window.jsQR) {
+        jsQrCheckinDetector = {
+          detect: async (canvas) => {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return [];
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const result = window.jsQR(img.data, canvas.width, canvas.height, {
+              inversionAttempts: 'attemptBoth',
+            });
+            return result ? [{ rawValue: result.data }] : [];
+          },
+        };
+        checkinDetector = jsQrCheckinDetector;
+        checkinCanvas.width = 640;
+        checkinCanvas.height = 360;
+        checkinContext = checkinCanvas.getContext('2d');
+        checkinLoopActive = true;
+        runCheckinLoop();
+        setCheckinOverlay('已切换到软件识别模式。', true);
+        setCheckinResult('已切换到软件识别模式。', null);
+      } else {
+        setCheckinResult('浏览器不支持扫码，请使用手动检票。', 'error');
+      }
     }
   } else {
-    setCheckinResult('浏览器不支持扫码，请使用手动检票。', 'error');
+    if (window.jsQR) {
+      jsQrCheckinDetector = {
+        detect: async (canvas) => {
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return [];
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const result = window.jsQR(img.data, canvas.width, canvas.height, {
+            inversionAttempts: 'attemptBoth',
+          });
+          return result ? [{ rawValue: result.data }] : [];
+        },
+      };
+      checkinDetector = jsQrCheckinDetector;
+      checkinCanvas.width = 640;
+      checkinCanvas.height = 360;
+      checkinContext = checkinCanvas.getContext('2d');
+      checkinLoopActive = true;
+      runCheckinLoop();
+      setCheckinOverlay('已切换到软件识别模式。', true);
+      setCheckinResult('已切换到软件识别模式。', null);
+    } else {
+      setCheckinResult('浏览器不支持扫码，请使用手动检票。', 'error');
+    }
   }
 };
 
@@ -1362,6 +1472,25 @@ const runCheckinLoop = async () => {
           lastCheckinCode = raw;
           lastCheckinTime = now;
           submitCheckin(raw);
+        }
+        checkinDetectFailCount = 0;
+      } else {
+        checkinDetectFailCount += 1;
+        if (checkinDetectFailCount > 3 && window.jsQR && checkinDetector !== jsQrCheckinDetector) {
+          jsQrCheckinDetector = {
+            detect: async (canvas) => {
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return [];
+              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const result = window.jsQR(img.data, canvas.width, canvas.height, {
+                inversionAttempts: 'attemptBoth',
+              });
+              return result ? [{ rawValue: result.data }] : [];
+            },
+          };
+          checkinDetector = jsQrCheckinDetector;
+          checkinDetectFailCount = 0;
+          setCheckinOverlay('已自动切换到软件识别模式', true);
         }
       }
     }
@@ -1389,8 +1518,26 @@ const startScanLoop = () => {
             handleScannedCode(code);
           }
         }
+        detectFailCount = 0;
       } catch {
-        // ignore detection errors
+        detectFailCount += 1;
+        // 连续失败时尝试切换为 jsQR 回退
+        if (detectFailCount > 3 && window.jsQR && barcodeDetector !== jsQrDetector) {
+          jsQrDetector = {
+            detect: async (canvas) => {
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return [];
+              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const result = window.jsQR(img.data, canvas.width, canvas.height, {
+                inversionAttempts: 'attemptBoth',
+              });
+              return result ? [{ rawValue: result.data }] : [];
+            },
+          };
+          barcodeDetector = jsQrDetector;
+          detectFailCount = 0;
+          showStatus('已切换到软件识别模式，请继续对准二维码。');
+        }
       }
     }
     window.requestAnimationFrame(loop);
