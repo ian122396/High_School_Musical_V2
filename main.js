@@ -13,6 +13,7 @@ const { createCanvas, loadImage, Image } = require('canvas');
 const os = require('os');
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 const DATA_FILE = path.join(__dirname, 'data', 'state.json');
 const LOCK_DIR = path.join(__dirname, 'data', 'locks');
 const REDIS_URL = process.env.REDIS_URL || process.env.REDIS;
@@ -3591,11 +3592,11 @@ io.on('connection', (socket) => {
   });
   ensureCheckinLogs();
   await saveState();
-  server.listen(PORT, () => {
+  server.listen(PORT, HOST, () => {
     if (isHttps) {
-      console.log(`Server listening on https://localhost:${PORT} (cert: ${CERT_CERT_PATH})`);
+      console.log(`Server listening on https://${HOST}:${PORT} (cert: ${CERT_CERT_PATH})`);
     } else {
-      console.log(`Server listening on http://localhost:${PORT} (no cert found, fallback HTTP)`);
+      console.log(`Server listening on http://${HOST}:${PORT} (no cert found, fallback HTTP)`);
     }
   });
 })();
