@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
 const bcrypt = require('bcryptjs');
 const { createCanvas, loadImage, Image } = require('canvas');
+const os = require('os');
 
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'data', 'state.json');
@@ -2957,6 +2958,47 @@ app.get('/api/audit/export', requireRole('admin'), (req, res) => {
 
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
+});
+
+app.get('/api/metrics', requireRole('admin'), (req, res) => {
+  const mem = process.memoryUsage();
+  const load = os.loadavg();
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const cpu = process.cpuUsage();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    timestamp: Date.now(),
+    uptimeSeconds: process.uptime(),
+    systemUptimeSeconds: os.uptime(),
+    loadavg: load,
+    memory: {
+      rss: mem.rss,
+      heapTotal: mem.heapTotal,
+      heapUsed: mem.heapUsed,
+      external: mem.external,
+      arrayBuffers: mem.arrayBuffers,
+      totalMem,
+      freeMem,
+      usedPercent: totalMem ? ((totalMem - freeMem) / totalMem) * 100 : null,
+    },
+    cpuUsage: cpu,
+    process: {
+      pid: process.pid,
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+    },
+    counters: {
+      accounts: Object.keys(state.accounts || {}).length,
+      projects: Object.keys(state.projects || {}).length,
+      merchProducts: Object.keys(state.merch?.products || {}).length,
+      merchOrders: (state.merch?.orders || []).length,
+      auditLogs: (state.auditLog || []).length,
+      checkinLogs: (state.checkInLogs || []).length,
+      sockets: io?.engine?.clientsCount || 0,
+    },
+  });
 });
 
 app.get('/api/backups', requireRole('admin'), async (_req, res) => {

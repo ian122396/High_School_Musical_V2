@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>系统状态与压力测试</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <style>
+      body {
+        background: #0b1220;
+        color: #e5e7eb;
+      }
+      .layout {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px;
+        display: grid;
+        gap: 16px;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 12px;
+      }
+      .metric {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        font-family: Consolas, SFMono-Regular, Menlo, Monaco, monospace;
+      }
+      .status-ok {
+        color: #22c55e;
+      }
+      .status-warn {
+        color: #fbbf24;
+      }
+      .status-error {
+        color: #f87171;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      input,
+      select,
+      button {
+        background: #0f172a;
+        color: #e5e7eb;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button.primary {
+        background: #2563eb;
+        border-color: #1d4ed8;
+      }
+      button.secondary {
+        background: #1f2937;
+      }
+      pre {
+        background: #0f172a;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        padding: 12px;
+        overflow: auto;
+        max-height: 360px;
+        font-size: 13px;
+      }
+      @media (max-width: 600px) {
+        .controls {
+          flex-direction: column;
+          align-items: stretch;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <header class="card">
+        <h2>系统状态与压力测试</h2>
+        <div class="controls">
+          <button class="primary" id="btn-refresh-metrics" type="button">刷新状态</button>
+          <span id="metrics-status"></span>
+        </div>
+      </header>
+
+      <section class="grid-2">
+        <div class="card">
+          <h2>服务器状态</h2>
+          <div id="metrics-summary" class="metrics"></div>
+        </div>
+        <div class="card">
+          <h2>计数与连接</h2>
+          <div id="metrics-counters" class="metrics"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>压力测试（浏览器本地并发）</h2>
+        <div class="controls">
+          <label>URL
+            <input id="loadtest-url" type="text" value="/healthz" size="28" />
+          </label>
+          <label>并发
+            <input id="loadtest-concurrency" type="number" min="1" value="10" />
+          </label>
+          <label>时长(秒)
+            <input id="loadtest-duration" type="number" min="1" value="10" />
+          </label>
+          <label>请求方式
+            <select id="loadtest-method">
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+            </select>
+          </label>
+          <button class="primary" id="btn-start-loadtest" type="button">开始测试</button>
+          <span id="loadtest-status"></span>
+        </div>
+        <pre id="loadtest-result">等待测试...</pre>
+      </section>
+
+      <section class="card">
+        <h2>接口状态（示例）</h2>
+        <pre>健康检查：GET /healthz
+指标：GET /api/metrics （需管理员登录）</pre>
+      </section>
+    </div>
+    <script type="module" src="/js/status.js"></script>
+  </body>
+</html>
