@@ -29,8 +29,12 @@ const seatTableBody = document.querySelector('#seat-ticket-table tbody');
 const seatTableStatus = document.getElementById('seat-table-status');
 const btnRefreshSeatTable = document.getElementById('btn-refresh-seat-table');
 const btnExportSeatTable = document.getElementById('btn-export-seat-table');
+const inlineCheckinTable = document.querySelector('#inline-checkin-table tbody');
+const inlineCheckinStatus = document.getElementById('inline-checkin-status');
+const btnRefreshInlineCheckins = document.getElementById('btn-refresh-inline-checkins');
 const seatTableSearchInput = document.getElementById('input-seat-search');
 const btnExportProject = document.getElementById('btn-export-project');
+const btnDownloadProjectTemplate = document.getElementById('btn-download-project-template');
 const btnImportProject = document.getElementById('btn-import-project');
 const inputImportFile = document.getElementById('input-import-file');
 const accountForm = document.getElementById('account-form');
@@ -53,6 +57,9 @@ const inputMerchDescription = document.getElementById('input-merch-description')
 const inputMerchImage = document.getElementById('input-merch-image');
 const btnResetMerchForm = document.getElementById('btn-reset-merch-form');
 const btnRefreshMerch = document.getElementById('btn-refresh-merch');
+const btnRefreshPresaleSummary = document.getElementById('btn-refresh-presale-summary');
+const presaleSummaryTableBody = document.querySelector('#presale-summary-table tbody');
+const presaleSummaryStatus = document.getElementById('presale-summary-status');
 const btnGoCheckoutModes = document.getElementById('btn-go-checkout-modes');
 const checkoutModeForm = document.getElementById('checkout-mode-form');
 const modeFormStatus = document.getElementById('mode-form-status');
@@ -75,6 +82,7 @@ const btnExportOrders = document.getElementById('btn-export-orders');
 const btnExportOrdersCsv = document.getElementById('btn-export-orders-csv');
 const btnExportOrdersXls = document.getElementById('btn-export-orders-xls');
 const btnExportOrdersPdf = document.getElementById('btn-export-orders-pdf');
+const btnDownloadOrdersTemplate = document.getElementById('btn-download-orders-template');
 const btnImportOrders = document.getElementById('btn-import-orders');
 const inputImportOrders = document.getElementById('input-import-orders');
 const btnClearOrders = document.getElementById('btn-clear-orders');
@@ -107,6 +115,50 @@ const btnExportSeatsPng = document.getElementById('btn-export-seats-png');
 const btnExportSeatsJson = document.getElementById('btn-export-seats-json');
 const btnExportProjectMenu = document.getElementById('btn-export-project-menu');
 const exportProjectMenu = document.getElementById('export-project-menu');
+const dialogSeatDetail = document.getElementById('dialog-seat-detail');
+const seatDetailBody = document.getElementById('seat-detail-body');
+const btnSaveAll = document.getElementById('btn-save-all');
+const btnUndoMenu = document.getElementById('btn-seat-undo-menu');
+const undoMenu = document.getElementById('seat-undo-menu');
+const btnUndoLast = document.getElementById('btn-undo-last');
+const btnUndoAll = document.getElementById('btn-undo-all');
+
+const pendingSeatChanges = [];
+const PROJECT_IMPORT_TEMPLATE = {
+  project: {
+    id: '项目ID可留空',
+    name: '示例项目',
+    rows: 2,
+    cols: 3,
+    seats: {
+      'r0-c0': { row: 0, col: 0, status: 'available', price: 100, seatLabel: '1排1号' },
+      'r0-c1': { row: 0, col: 1, status: 'locked', price: 120, seatLabel: '1排2号' },
+      'r1-c0': {
+        row: 1,
+        col: 0,
+        status: 'sold',
+        price: 150,
+        seatLabel: '2排1号',
+        ticketNumber: 'T0001',
+        issuedAt: Date.now(),
+        checkedInAt: null,
+      },
+    },
+  },
+};
+
+const ORDERS_IMPORT_TEMPLATE = {
+  orders: [
+    {
+      items: [{ productId: '商品ID', name: '示例商品', quantity: 1, unitPrice: 19.9 }],
+      checkoutModeId: 'b57171c5-85ad-4154-ad8e-f3ccc20b931d',
+      paymentMethod: '现金（人民币）',
+      handledBy: 'admin',
+      note: '备注',
+      createdAt: Date.now(),
+    },
+  ],
+};
 const inputBatchPrice = document.getElementById('input-batch-price');
 const inputBatchRowStart = document.getElementById('input-batch-row-start');
 const inputBatchRowEnd = document.getElementById('input-batch-row-end');
@@ -126,6 +178,38 @@ const btnOpenModeForm = document.getElementById('btn-open-mode-form');
 const dialogMerchProduct = document.getElementById('dialog-merch-product');
 const dialogModeForm = document.getElementById('dialog-mode-form');
 const dialogOrderForm = document.getElementById('dialog-order-form');
+const btnOpenTicketCoupons = document.getElementById('btn-open-ticket-coupons');
+const dialogTicketCoupons = document.getElementById('dialog-ticket-coupons');
+const btnNewTicketRule = document.getElementById('btn-new-ticket-rule');
+const ticketRuleTableBody = document.querySelector('#ticket-rule-table tbody');
+const ticketRuleStatus = document.getElementById('ticket-rule-status');
+const selectTicketRule = document.getElementById('select-ticket-rule');
+const inputTicketCouponQuantity = document.getElementById('input-ticket-coupon-quantity');
+const btnIssueTicketCoupons = document.getElementById('btn-issue-ticket-coupons');
+const inputTicketCouponSearch = document.getElementById('input-ticket-coupon-search');
+const selectTicketCouponStatus = document.getElementById('select-ticket-coupon-status');
+const btnRefreshTicketCoupons = document.getElementById('btn-refresh-ticket-coupons');
+const ticketCouponTableBody = document.querySelector('#ticket-coupon-table tbody');
+const ticketCouponStatus = document.getElementById('ticket-coupon-status');
+const dialogTicketRuleForm = document.getElementById('dialog-ticket-rule-form');
+const ticketRuleForm = document.getElementById('ticket-rule-form');
+const inputTicketRuleId = document.getElementById('input-ticket-rule-id');
+const inputTicketRuleName = document.getElementById('input-ticket-rule-name');
+const inputTicketRuleCount = document.getElementById('input-ticket-rule-count');
+const inputTicketRuleDiscount = document.getElementById('input-ticket-rule-discount');
+const inputTicketRulePrices = document.getElementById('input-ticket-rule-prices');
+const selectTicketRuleEnabled = document.getElementById('select-ticket-rule-enabled');
+const ticketRuleFormStatus = document.getElementById('ticket-rule-form-status');
+const dialogVoucherAdmin = document.getElementById('dialog-voucher-admin');
+const voucherAdminInfo = document.getElementById('voucher-admin-info');
+const inputVoucherNewCode = document.getElementById('input-voucher-new-code');
+const inputVoucherReason = document.getElementById('input-voucher-reason');
+const inputVoucherConfirm = document.getElementById('input-voucher-confirm');
+const btnVoucherReplace = document.getElementById('btn-voucher-replace');
+const btnVoucherUndoRedeem = document.getElementById('btn-voucher-undo-redeem');
+const btnVoucherVoid = document.getElementById('btn-voucher-void');
+const btnVoucherRefund = document.getElementById('btn-voucher-refund');
+const voucherAdminStatus = document.getElementById('voucher-admin-status');
 const selectCheckinProject = document.getElementById('select-checkin-project');
 const btnRefreshCheckins = document.getElementById('btn-refresh-checkins');
 const btnExportCheckins = document.getElementById('btn-export-checkins');
@@ -178,6 +262,35 @@ let seatGridSignature = null;
 let selectedSeats = new Set();
 let modifiedSeats = new Map();
 let priceColorMap = new Map();
+let priceChipStyleEl = null;
+const priceChipClassCache = new Map();
+const ensurePriceChipClass = (color) => {
+  const normalized = String(color || '').trim();
+  if (!normalized) return '';
+  if (priceChipClassCache.has(normalized)) return priceChipClassCache.get(normalized);
+
+  const key = normalized.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24) || 'default';
+  const cls = `price-chip--${key}`;
+  priceChipClassCache.set(normalized, cls);
+
+  if (!priceChipStyleEl) {
+    priceChipStyleEl = document.getElementById('price-chip-style');
+    if (!priceChipStyleEl) {
+      priceChipStyleEl = document.createElement('style');
+      priceChipStyleEl.id = 'price-chip-style';
+      document.head.appendChild(priceChipStyleEl);
+    }
+  }
+  if (!priceChipStyleEl.dataset.keys) priceChipStyleEl.dataset.keys = '';
+  const keys = priceChipStyleEl.dataset.keys.split(',').filter(Boolean);
+  if (!keys.includes(key)) {
+    priceChipStyleEl.textContent += `\n.${cls}{--chip-color:${normalized};}`;
+    keys.push(key);
+    priceChipStyleEl.dataset.keys = keys.join(',');
+  }
+
+  return cls;
+};
 let isDragging = false;
 let dragOrigin = null;
 let dragSelectionBase = new Set();
@@ -196,6 +309,11 @@ let isSavingProject = false;
 let merchProducts = [];
 let checkoutModes = [];
 let merchOrders = [];
+let merchPresaleSummary = [];
+let activeVoucherAdminCode = '';
+let activeVoucherAdminVoucher = null;
+let ticketDiscountRules = [];
+let ticketCoupons = [];
 let selectedOrderIds = new Set();
 let ordersTotal = 0;
 let ordersPage = 1;
@@ -233,6 +351,13 @@ const SEAT_STATUS_LABELS = {
   sold: '已签发',
   disabled: '禁用',
 };
+const SEAT_VIEW_STATUS_LABELS = {
+  available: '空闲',
+  locked: '锁定',
+  sold: '已售(未检票)',
+  checked: '已售(已检票)',
+  disabled: '禁用',
+};
 
 const redirectToLogin = () => {
   window.location.href = '/login.html?role=admin';
@@ -255,6 +380,58 @@ const authFetch = async (input, init = {}) => {
     throw new Error('会话已过期，请重新登录。');
   }
   return response;
+};
+
+const requestJson = async (input, init = {}) => {
+  const response = await authFetch(input, init);
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+};
+
+const dangerousJsonRequest = async (input, init = {}, { actionLabel = '' } = {}) => {
+  const normalizeBody = (body) => {
+    if (!body) return {};
+    if (typeof body === 'string') {
+      try {
+        return JSON.parse(body);
+      } catch {
+        return {};
+      }
+    }
+    if (typeof body === 'object') return { ...body };
+    return {};
+  };
+
+  const run = async (confirmToken) => {
+    const headers = { ...(init.headers || {}) };
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+    const bodyObj = normalizeBody(init.body);
+    if (confirmToken) bodyObj.confirmToken = confirmToken;
+    return requestJson(input, { ...init, headers, body: JSON.stringify(bodyObj) });
+  };
+
+  let { response, data } = await run(null);
+  if (response.status === 409 && data && data.code === 'CONFIRM_REQUIRED') {
+    const detail = data.detail || actionLabel || data.action || '危险操作';
+    const expiresAt = data.expiresAt ? new Date(data.expiresAt).toLocaleTimeString() : '';
+    const first = window.confirm(
+      `需要二次确认：\n${detail}\n\n系统将自动创建备份，操作完成后可点击“撤销”恢复。\n${
+        expiresAt ? `确认有效期至：${expiresAt}\n` : ''
+      }\n是否继续？`
+    );
+    if (!first) {
+      throw new Error('已取消操作');
+    }
+    const second = window.confirm('请再次确认：该操作会覆盖/删除重要数据。');
+    if (!second) {
+      throw new Error('已取消操作');
+    }
+    ({ response, data } = await run(data.confirmToken));
+  }
+  if (!response.ok) {
+    throw new Error(data?.error || '操作失败');
+  }
+  return data;
 };
 
 const ensureActiveProjectMetadata = () => {
@@ -378,6 +555,7 @@ const updateActiveView = (view) => {
     const isActive = tab.dataset.view === view;
     tab.classList.toggle('admin-tab--active', isActive);
     tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    tab.setAttribute('tabindex', isActive ? '0' : '-1');
   });
   adminViews.forEach((section) => {
     const matches = section.dataset.view === view;
@@ -465,32 +643,40 @@ const syncActiveProject = async ({ silent = false, refreshSeatTable = false, ref
   }
 };
 
-selectTicketingMode.addEventListener('change', () => {
-  if (selectTicketingMode.value === 'sequence') {
-    sequenceConfigSection.classList.remove('hidden');
-  } else {
-    sequenceConfigSection.classList.add('hidden');
-    inputTicketTemplate.value = '';
-    inputTicketStart.value = '';
-  }
-  evaluateTicketingDirty();
-});
+if (selectTicketingMode) {
+  selectTicketingMode.addEventListener('change', () => {
+    if (selectTicketingMode.value === 'sequence') {
+      sequenceConfigSection.classList.remove('hidden');
+    } else {
+      sequenceConfigSection.classList.add('hidden');
+      inputTicketTemplate.value = '';
+      inputTicketStart.value = '';
+    }
+    evaluateTicketingDirty();
+  });
+}
 
-newProjectTicketingMode.addEventListener('change', () => {
-  if (newProjectTicketingMode.value === 'sequence') {
-    newProjectSequenceSection.classList.remove('hidden');
-  } else {
-    newProjectSequenceSection.classList.add('hidden');
-  }
-});
+if (newProjectTicketingMode) {
+  newProjectTicketingMode.addEventListener('change', () => {
+    if (newProjectTicketingMode.value === 'sequence') {
+      newProjectSequenceSection.classList.remove('hidden');
+    } else {
+      newProjectSequenceSection.classList.add('hidden');
+    }
+  });
+}
 
-inputTicketTemplate.addEventListener('input', () => {
-  evaluateTicketingDirty();
-});
+if (inputTicketTemplate) {
+  inputTicketTemplate.addEventListener('input', () => {
+    evaluateTicketingDirty();
+  });
+}
 
-inputTicketStart.addEventListener('input', () => {
-  evaluateTicketingDirty();
-});
+if (inputTicketStart) {
+  inputTicketStart.addEventListener('input', () => {
+    evaluateTicketingDirty();
+  });
+}
 
 const seatKey = (row, col) => `r${row}-c${col}`;
 
@@ -524,6 +710,12 @@ const setMerchFormStatus = (message, isError = false) => {
   if (!merchFormStatus) return;
   merchFormStatus.textContent = message || '';
   merchFormStatus.style.color = isError ? '#ed553b' : '#20639b';
+};
+
+const setPresaleSummaryStatus = (message, isError = false) => {
+  if (!presaleSummaryStatus) return;
+  presaleSummaryStatus.textContent = message || '';
+  presaleSummaryStatus.style.color = isError ? '#ed553b' : '#20639b';
 };
 
 const setModeFormStatus = (message, isError = false) => {
@@ -614,6 +806,84 @@ const showToast = (text, type = 'info') => {
   }, 2600);
 };
 
+const showUndoToast = (text, backupFilename, { onUndo } = {}) => {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.style.position = 'fixed';
+    container.style.top = '16px';
+    container.style.right = '16px';
+    container.style.zIndex = '9999';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '8px';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.style.padding = '10px 14px';
+  toast.style.borderRadius = '8px';
+  toast.style.color = '#fff';
+  toast.style.boxShadow = '0 8px 18px rgba(0,0,0,0.2)';
+  toast.style.background = '#1f7a40';
+  toast.style.display = 'flex';
+  toast.style.alignItems = 'center';
+  toast.style.justifyContent = 'space-between';
+  toast.style.gap = '10px';
+
+  const left = document.createElement('div');
+  left.textContent = text;
+  toast.appendChild(left);
+
+  if (backupFilename) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '撤销';
+    btn.style.border = '1px solid rgba(255,255,255,0.7)';
+    btn.style.background = 'transparent';
+    btn.style.color = '#fff';
+    btn.style.borderRadius = '8px';
+    btn.style.padding = '6px 10px';
+    btn.style.cursor = 'pointer';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        if (onUndo) {
+          await onUndo(backupFilename);
+        }
+      } finally {
+        toast.remove();
+        if (!container.children.length) container.remove();
+      }
+    });
+    toast.appendChild(btn);
+  }
+
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.remove();
+    if (!container.children.length) container.remove();
+  }, 7000);
+};
+
+const restoreFromBackup = async (backupFilename) => {
+  if (!backupFilename) return;
+  await dangerousJsonRequest(
+    '/api/backups/restore',
+    {
+      method: 'POST',
+      body: JSON.stringify({ filename: backupFilename }),
+    },
+    { actionLabel: `恢复备份 ${backupFilename}` }
+  );
+  showToast('已恢复备份，正在刷新数据...', 'success');
+  await fetchProjects();
+  await refreshMerchData();
+  await loadMerchOrders();
+  renderBackups();
+  renderAuditLogs();
+};
+
 const parseOrderItemsInput = (text) => {
   const lines = text
     .split('\n')
@@ -657,6 +927,138 @@ const setCheckinLogStatus = (message, isError = false) => {
   if (!checkinLogStatus) return;
   checkinLogStatus.textContent = message || '';
   checkinLogStatus.style.color = isError ? '#ed553b' : '#20639b';
+};
+
+const setTicketRuleStatus = (message, isError = false) => {
+  if (!ticketRuleStatus) return;
+  ticketRuleStatus.textContent = message || '';
+  ticketRuleStatus.style.color = isError ? '#ed553b' : '#20639b';
+};
+
+const setTicketCouponStatus = (message, isError = false) => {
+  if (!ticketCouponStatus) return;
+  ticketCouponStatus.textContent = message || '';
+  ticketCouponStatus.style.color = isError ? '#ed553b' : '#20639b';
+};
+
+const renderTicketRuleSelect = () => {
+  if (!selectTicketRule) return;
+  const options = ['<option value="">请选择</option>'];
+  ticketDiscountRules
+    .slice()
+    .filter((r) => r && r.enabled !== false)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .forEach((rule) => {
+      options.push(`<option value="${rule.id}">${rule.name}（${rule.ticketCount}张 ${rule.discountRate}折）</option>`);
+    });
+  selectTicketRule.innerHTML = options.join('');
+};
+
+const renderTicketRules = () => {
+  if (!ticketRuleTableBody) return;
+  ticketRuleTableBody.innerHTML = '';
+  if (!ticketDiscountRules.length) {
+    ticketRuleTableBody.innerHTML = '<tr><td colspan="6">暂无规则</td></tr>';
+    renderTicketRuleSelect();
+    return;
+  }
+  ticketDiscountRules.forEach((rule) => {
+    const tr = document.createElement('tr');
+    const prices =
+      rule.allowedPrices && Array.isArray(rule.allowedPrices) && rule.allowedPrices.length
+        ? rule.allowedPrices.join(' / ')
+        : '不限';
+    tr.innerHTML = `
+      <td>${rule.name}</td>
+      <td>${rule.ticketCount}</td>
+      <td>${rule.discountRate} 折</td>
+      <td>${prices}</td>
+      <td>${rule.enabled === false ? '停用' : '启用'}</td>
+      <td>
+        <div class="table-actions">
+          <button class="button button--secondary" data-action="edit" data-id="${rule.id}">编辑</button>
+          <button class="button button--danger" data-action="delete" data-id="${rule.id}">删除</button>
+        </div>
+      </td>
+    `;
+    ticketRuleTableBody.appendChild(tr);
+  });
+  renderTicketRuleSelect();
+};
+
+const loadTicketRules = async () => {
+  if (!activeProject) {
+    ticketDiscountRules = [];
+    renderTicketRules();
+    return;
+  }
+  try {
+    const resp = await authFetch(`/api/projects/${activeProject.id}/ticket-discounts`);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || '无法获取折扣规则');
+    ticketDiscountRules = data.rules || [];
+    renderTicketRules();
+    setTicketRuleStatus('');
+  } catch (error) {
+    ticketDiscountRules = [];
+    renderTicketRules();
+    setTicketRuleStatus(error.message, true);
+  }
+};
+
+const loadTicketCoupons = async () => {
+  if (!activeProject) {
+    ticketCoupons = [];
+    if (ticketCouponTableBody) ticketCouponTableBody.innerHTML = '<tr><td colspan="6">请选择项目</td></tr>';
+    return;
+  }
+  try {
+    const params = new URLSearchParams();
+    const q = (inputTicketCouponSearch?.value || '').trim();
+    if (q) params.set('q', q);
+    const st = selectTicketCouponStatus?.value || '';
+    if (st) params.set('status', st);
+    const resp = await authFetch(`/api/projects/${activeProject.id}/ticket-coupons?${params.toString()}`);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || '无法获取优惠券列表');
+    ticketCoupons = data.coupons || [];
+    if (!ticketCouponTableBody) return;
+    ticketCouponTableBody.innerHTML = '';
+    if (!ticketCoupons.length) {
+      ticketCouponTableBody.innerHTML = '<tr><td colspan="6">暂无记录</td></tr>';
+      return;
+    }
+    ticketCoupons.slice(0, 500).forEach((c) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><code>${c.code}</code></td>
+        <td>${c.ruleName || '-'}</td>
+        <td>${c.remaining ?? '-'}</td>
+        <td>${c.status}</td>
+        <td>${c.issuedBy || '-'}<br/><span class="hint">${c.issuedAt ? new Date(c.issuedAt).toLocaleString() : '-'}</span></td>
+        <td>
+          <div class="table-actions">
+            <button class="button button--danger" data-action="void" data-code="${c.code}" ${c.status !== 'issued' ? 'disabled' : ''}>作废</button>
+          </div>
+        </td>
+      `;
+      ticketCouponTableBody.appendChild(tr);
+    });
+    setTicketCouponStatus('');
+  } catch (error) {
+    if (ticketCouponTableBody) ticketCouponTableBody.innerHTML = `<tr><td colspan="6">${error.message}</td></tr>`;
+    setTicketCouponStatus(error.message, true);
+  }
+};
+
+const resetTicketRuleForm = () => {
+  if (!ticketRuleForm) return;
+  ticketRuleForm.reset();
+  if (inputTicketRuleId) inputTicketRuleId.value = '';
+  if (inputTicketRuleCount) inputTicketRuleCount.value = '1';
+  if (inputTicketRuleDiscount) inputTicketRuleDiscount.value = '9.0';
+  if (selectTicketRuleEnabled) selectTicketRuleEnabled.value = 'true';
+  if (ticketRuleFormStatus) ticketRuleFormStatus.textContent = '';
 };
 
 const renderCheckinLogs = (logs = []) => {
@@ -1047,16 +1449,32 @@ const saveActiveProject = async ({ manual = false, reason = 'manual' } = {}) => 
   }
 
   try {
-    const response = await authFetch(`/api/projects/${activeProject.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      throw new Error(error?.error || '保存失败');
+    let data;
+    if (manual) {
+      data = await dangerousJsonRequest(
+        `/api/projects/${activeProject.id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ ...payload, bulk: seatPayload.length >= 20 }),
+        },
+        { actionLabel: '保存项目修改（可能包含批量座位变更）' }
+      );
+    } else {
+      // 自动保存不弹出二次确认，遇到危险操作则提示用户手动保存
+      const result = await requestJson(`/api/projects/${activeProject.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, bulk: seatPayload.length >= 20 }),
+      });
+      if (result.response.status === 409 && result.data?.code === 'CONFIRM_REQUIRED') {
+        setStatus('检测到批量/危险修改，需点击“保存修改”进行二次确认后才能同步。', true);
+        return;
+      }
+      if (!result.response.ok) {
+        throw new Error(result.data?.error || '保存失败');
+      }
+      data = result.data;
     }
-    const data = await response.json();
     modifiedSeats.clear();
     mergeIncomingProject(data.project, {
       refreshSeatTable: reason !== 'auto',
@@ -1088,6 +1506,9 @@ const saveActiveProject = async ({ manual = false, reason = 'manual' } = {}) => 
       setStatus('已自动保存最新修改。');
     } else {
       setStatus('已保存并同步到所有终端。');
+    }
+    if (manual && data?.undo?.backupFilename) {
+      showUndoToast('已保存修改', data.undo.backupFilename, { onUndo: restoreFromBackup });
     }
   } catch (error) {
     setStatus(error.message, true);
@@ -1133,7 +1554,8 @@ const renderPriceLegend = () => {
   }
   priceColorMap.forEach((color, price) => {
     const item = document.createElement('li');
-    item.innerHTML = `<span class="price-chip" style="--chip-color: ${color};"></span>¥${price}`;
+    const chipClass = ensurePriceChipClass(color);
+    item.innerHTML = `<span class="price-chip ${chipClass}"></span>¥${price}`;
     priceLegendList.appendChild(item);
   });
 };
@@ -1435,6 +1857,16 @@ const refreshSeatTable = ({ fromSearch = false, resetPage = false } = {}) => {
     const tr = document.createElement('tr');
     tr.dataset.seatId = id;
     const seatLabel = seat.seatLabel || `${seat.row + 1}排${seat.col + 1}号`;
+    const viewStatus =
+      seat.status === 'sold'
+        ? seat.checkedInAt
+          ? 'checked'
+          : 'sold'
+        : seat.status === 'locked'
+        ? 'locked'
+        : seat.status === 'disabled'
+        ? 'disabled'
+        : 'available';
     const statusValue = seat.status === 'sold' ? 'sold' : seat.status === 'locked' ? 'locked' : 'available';
 
     tr.innerHTML = `
@@ -1445,6 +1877,12 @@ const refreshSeatTable = ({ fromSearch = false, resetPage = false } = {}) => {
           <option value="available" ${statusValue === 'available' ? 'selected' : ''}>空闲</option>
           <option value="locked" ${statusValue === 'locked' ? 'selected' : ''}>锁定</option>
           <option value="sold" ${statusValue === 'sold' ? 'selected' : ''}>已签发</option>
+        </select>
+      </td>
+      <td>
+        <select data-role="checkin" aria-label="检票状态">
+          <option value="unchecked" ${seat.checkedInAt ? '' : 'selected'}>未检票</option>
+          <option value="checked" ${seat.checkedInAt ? 'selected' : ''}>已检票</option>
         </select>
       </td>
       <td>
@@ -1471,6 +1909,7 @@ const refreshSeatTable = ({ fromSearch = false, resetPage = false } = {}) => {
       </td>
       <td>
         <button class="button button--primary" data-action="save" type="button">保存</button>
+        <button class="button" data-action="detail" type="button">详情</button>
       </td>
     `;
     fragment.appendChild(tr);
@@ -1484,6 +1923,7 @@ const refreshSeatTable = ({ fromSearch = false, resetPage = false } = {}) => {
       setSeatTableStatus('');
     }
   }
+  refreshInlineCheckins(true);
 };
 
 const renderAccounts = () => {
@@ -1522,10 +1962,12 @@ const renderMerchProducts = () => {
     merchProductListEl.appendChild(empty);
     return;
   }
+  const presaleMap = new Map((merchPresaleSummary || []).map((row) => [String(row.productId), row]));
   merchProducts
     .slice()
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .forEach((product) => {
+      const presale = presaleMap.get(String(product.id));
       const card = document.createElement('div');
       card.className = 'merch-card';
       const img = document.createElement('img');
@@ -1538,7 +1980,11 @@ const renderMerchProducts = () => {
       card.appendChild(title);
       const meta = document.createElement('div');
       meta.className = 'merch-card__meta';
-      meta.innerHTML = `<span>${formatCurrency(product.price)}</span><span>库存 ${product.stock}</span>`;
+      meta.innerHTML = `<span>${formatCurrency(product.price)}</span><span>库存 ${product.stock}</span>${
+        presale && presale.outstandingQty
+          ? `<span class="hint">预售未核销 ${presale.outstandingQty}</span>`
+          : ''
+      }`;
       card.appendChild(meta);
       if (product.description) {
         const desc = document.createElement('p');
@@ -1612,6 +2058,26 @@ const renderCheckoutModes = () => {
   syncOrderCheckoutSelect();
 };
 
+const renderPresaleSummary = () => {
+  if (!presaleSummaryTableBody) return;
+  presaleSummaryTableBody.innerHTML = '';
+  if (!merchPresaleSummary || !merchPresaleSummary.length) {
+    presaleSummaryTableBody.innerHTML = '<tr><td colspan="5">暂无预售记录。</td></tr>';
+    return;
+  }
+  merchPresaleSummary.slice(0, 500).forEach((row) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${row.name || row.productId}</td>
+      <td>${formatCurrency(row.unitPrice || 0)}</td>
+      <td>${row.issuedQty || 0}</td>
+      <td>${row.redeemedQty || 0}</td>
+      <td><strong>${row.outstandingQty || 0}</strong></td>
+    `;
+    presaleSummaryTableBody.appendChild(tr);
+  });
+};
+
 const syncOrderCheckoutSelect = () => {
   if (!selectOrderCheckoutMode) return;
   const options = ['<option value="">原价</option>'];
@@ -1642,10 +2108,28 @@ const renderMerchOrders = () => {
       .join('、');
     const checked = selectedOrderIds.has(order.id);
     const manualTag = order.manual ? '<span class="badge badge--warning">录入</span>' : '';
+    const presaleTag =
+      order.orderType === 'presale'
+        ? `<span class="badge badge--info" title="预售预购券">预售券</span>${
+            order.voucherCode
+              ? `<br/><button class="button button--link button--inline" data-action="open-voucher" data-id="${order.id}" type="button">券码：${order.voucherCode}</button>`
+              : ''
+          }${
+            order.redeemedAt
+              ? `<br/><span class="badge badge--success">已核销</span><span class="hint"> ${new Date(
+                  order.redeemedAt
+                ).toLocaleString()}</span>`
+              : `<br/><span class="badge badge--warning">未核销</span>`
+          }`
+        : '';
     tr.innerHTML = `
       <td><input type="checkbox" class="order-select" data-id="${order.id}" ${checked ? 'checked' : ''}/></td>
-      <td>${new Date(order.createdAt).toLocaleString()} ${manualTag}</td>
-      <td>${detail}</td>
+      <td>${new Date(order.createdAt).toLocaleString()} ${manualTag}${presaleTag ? `<br/>${presaleTag}` : ''}</td>
+      <td>${detail}${
+        order.orderType === 'presale' && order.voucherCode
+          ? `<br/><span class="hint">预购券：${order.voucherCode}</span>`
+          : ''
+      }</td>
       <td>${order.checkoutModeName || '原价'}</td>
       <td>${formatCurrency(order.totalAfter)}${
         order.discount ? `<br/><span class="hint">立减 ${formatCurrency(order.discount)}</span>` : ''
@@ -1927,6 +2411,164 @@ const loadMerchProducts = async ({ silent = false } = {}) => {
   }
 };
 
+const loadPresaleSummary = async ({ silent = false } = {}) => {
+  if (!presaleSummaryTableBody) return;
+  try {
+    const response = await authFetch('/api/merch/presale/summary');
+    if (!response.ok) throw new Error('无法获取预售统计');
+    const data = await response.json().catch(() => ({}));
+    merchPresaleSummary = data.summary || [];
+    renderPresaleSummary();
+    renderMerchProducts();
+    if (!silent) setPresaleSummaryStatus('已刷新预售统计。');
+  } catch (error) {
+    if (!silent) {
+      setPresaleSummaryStatus(error.message, true);
+    } else {
+      console.warn('[merch] refresh presale summary failed:', error);
+    }
+  }
+};
+
+const setVoucherAdminStatus = (message, isError = false) => {
+  if (!voucherAdminStatus) return;
+  voucherAdminStatus.textContent = message || '';
+  voucherAdminStatus.style.color = isError ? '#d94848' : '#1f76d0';
+};
+
+const normalizeVoucherCode = (raw) => {
+  if (typeof raw !== 'string') return '';
+  return raw.trim().toUpperCase();
+};
+
+const updateVoucherAdminButtons = (voucher) => {
+  const confirmValue = normalizeVoucherCode(inputVoucherConfirm?.value || '');
+  const expected = normalizeVoucherCode(activeVoucherAdminCode || '');
+  const confirmed = Boolean(expected && confirmValue === expected);
+
+  const status = voucher?.status || '';
+  const canReplace = confirmed && status === 'issued';
+  const canUndoRedeem = confirmed && status === 'redeemed';
+  const canVoid = confirmed && status === 'issued';
+  const canRefund = confirmed && status === 'issued';
+
+  if (btnVoucherReplace) btnVoucherReplace.disabled = !canReplace;
+  if (btnVoucherUndoRedeem) btnVoucherUndoRedeem.disabled = !canUndoRedeem;
+  if (btnVoucherVoid) btnVoucherVoid.disabled = !canVoid;
+  if (btnVoucherRefund) btnVoucherRefund.disabled = !canRefund;
+};
+
+const renderVoucherAdminInfo = (voucher) => {
+  if (!voucherAdminInfo) return;
+  if (!voucher) {
+    voucherAdminInfo.textContent = '未加载到预购券信息。';
+    return;
+  }
+  const status = voucher.status || '-';
+  const lines = [];
+  lines.push(`<strong>券码：</strong> ${voucher.code || '-'}`);
+  lines.push(`<strong>状态：</strong> ${status}`);
+  lines.push(`<strong>订单号：</strong> ${voucher.orderNumber || '-'} <span class="hint">(${voucher.orderId || '-'})</span>`);
+  lines.push(`<strong>签发：</strong> ${voucher.createdBy || '-'} @ ${voucher.createdAt ? new Date(voucher.createdAt).toLocaleString() : '-'}`);
+  if (voucher.redeemedAt) {
+    lines.push(
+      `<strong>核销：</strong> ${voucher.redeemedBy || '-'} @ ${new Date(voucher.redeemedAt).toLocaleString()}`
+    );
+  }
+  if (voucher.replacedBy) {
+    lines.push(`<strong>换码：</strong> 已换为 ${voucher.replacedBy}`);
+  }
+  if (voucher.voidedAt) {
+    lines.push(`<strong>作废：</strong> ${voucher.voidedBy || '-'} @ ${new Date(voucher.voidedAt).toLocaleString()}`);
+  }
+  if (voucher.refundedAt) {
+    lines.push(
+      `<strong>退款：</strong> ${voucher.refundedBy || '-'} @ ${new Date(voucher.refundedAt).toLocaleString()}`
+    );
+  }
+  const items = Array.isArray(voucher.items) ? voucher.items : [];
+  if (items.length) {
+    const list = items
+      .map(
+        (item, idx) =>
+          `<div><span class="hint">${idx + 1}.</span> ${item.name || '-'} ×${item.quantity || 0}（${formatCurrency(
+            item.unitPrice || 0
+          )}）</div>`
+      )
+      .join('');
+    lines.push('<hr/>');
+    lines.push('<strong>商品：</strong>');
+    lines.push(list);
+    lines.push(
+      `<div class="mt-6"><span class="hint">总金额：</span>${formatCurrency(
+        voucher.totalBefore || 0
+      )}，<span class="hint">应付：</span>${formatCurrency(voucher.totalAfter || 0)}</div>`
+    );
+  }
+  voucherAdminInfo.innerHTML = lines.join('<br/>');
+};
+
+const fetchVoucher = async (code) => {
+  const normalized = normalizeVoucherCode(code);
+  if (!normalized) throw new Error('券码无效');
+  const response = await authFetch(`/api/merch/vouchers/${encodeURIComponent(normalized)}?ts=${Date.now()}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => null);
+    throw new Error(err?.error || '无法获取预购券信息');
+  }
+  const data = await response.json();
+  return data.voucher;
+};
+
+const openVoucherAdminDialog = async (code) => {
+  activeVoucherAdminCode = normalizeVoucherCode(code);
+  activeVoucherAdminVoucher = null;
+  if (inputVoucherNewCode) inputVoucherNewCode.value = '';
+  if (inputVoucherReason) inputVoucherReason.value = '';
+  if (inputVoucherConfirm) inputVoucherConfirm.value = '';
+  setVoucherAdminStatus('');
+  renderVoucherAdminInfo(null);
+  updateVoucherAdminButtons(null);
+  openDialog(dialogVoucherAdmin);
+  try {
+    const voucher = await fetchVoucher(activeVoucherAdminCode);
+    activeVoucherAdminVoucher = voucher;
+    renderVoucherAdminInfo(voucher);
+    updateVoucherAdminButtons(voucher);
+    if (inputVoucherConfirm) inputVoucherConfirm.focus();
+  } catch (error) {
+    setVoucherAdminStatus(error.message, true);
+    voucherAdminInfo.textContent = error.message;
+  }
+};
+
+const runVoucherAdminAction = async ({ code, endpoint, payload, successMessage }) => {
+  const normalized = normalizeVoucherCode(code);
+  const response = await authFetch(`/api/merch/vouchers/${encodeURIComponent(normalized)}/${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => null);
+    throw new Error(err?.error || '操作失败');
+  }
+  return response.json().catch(() => ({}));
+};
+
+const refreshVoucherAdminDialog = async () => {
+  if (!activeVoucherAdminCode) return;
+  try {
+    const voucher = await fetchVoucher(activeVoucherAdminCode);
+    activeVoucherAdminVoucher = voucher;
+    renderVoucherAdminInfo(voucher);
+    updateVoucherAdminButtons(voucher);
+    setVoucherAdminStatus('已刷新。');
+  } catch (error) {
+    setVoucherAdminStatus(error.message, true);
+  }
+};
+
 const loadCheckoutModes = async ({ silent = false } = {}) => {
   if (!checkoutModeTableBody) return;
   try {
@@ -1989,6 +2631,7 @@ const refreshMerchData = async ({ silent = false } = {}) => {
       loadMerchProducts({ silent }),
       loadCheckoutModes({ silent }),
       loadMerchOrders({ silent }),
+      loadPresaleSummary({ silent }),
     ]);
   } finally {
     merchRefreshInFlight = false;
@@ -2078,6 +2721,8 @@ const selectProject = async (projectId) => {
     joinSocketRoom(projectId);
     scheduleProjectAutoSync();
     setStatus(`已打开项目「${activeProject.name}」。`);
+    loadTicketRules();
+    loadTicketCoupons();
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -2130,7 +2775,7 @@ const applyToSelectedSeats = (callback) => {
   return true;
 };
 
-btnApplyPrice.addEventListener('click', () => {
+if (btnApplyPrice) btnApplyPrice.addEventListener('click', () => {
   const priceValue = Number(priceInput.value);
   if (!Number.isFinite(priceValue) || priceValue < 0) {
     setStatus('票价必须是非负数字。', true);
@@ -2154,7 +2799,7 @@ btnApplyPrice.addEventListener('click', () => {
   }
 });
 
-btnDisableSeats.addEventListener('click', () => {
+if (btnDisableSeats) btnDisableSeats.addEventListener('click', () => {
   const altered = applyToSelectedSeats((seat, id) => {
     seat.status = 'disabled';
     seat.price = null;
@@ -2236,28 +2881,63 @@ const applyBatchStatus = () => {
 if (btnApplyBatchStatus) {
   btnApplyBatchStatus.addEventListener('click', () => applyBatchStatus());
 }
-btnResetSelection.addEventListener('click', () => {
+if (btnResetSelection) btnResetSelection.addEventListener('click', () => {
   resetSelection();
 });
 
-seatTableBody.addEventListener('click', async (event) => {
-  const button = event.target.closest('button[data-action="save"]');
+if (seatTableBody) seatTableBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action]');
   if (!button) return;
+  const action = button.getAttribute('data-action');
+  const rowEl = button.closest('tr');
+  if (!rowEl) return;
+  const seatId = rowEl.dataset.seatId;
+  const seat = activeProject?.seats?.[seatId];
+  if (!seatId || !seat) return;
+
+  if (action === 'detail') {
+    if (dialogSeatDetail && seatDetailBody) {
+      const detailHtml = `
+        <p><strong>座位：</strong>${seat.seatLabel || `${seat.row + 1}排${seat.col + 1}号`}</p>
+        <p><strong>状态：</strong>${
+          SEAT_VIEW_STATUS_LABELS[
+            seat.checkedInAt && seat.status === 'sold' ? 'checked' : seat.status
+          ] || seat.status
+        }</p>
+        <p><strong>票号：</strong>${seat.ticketNumber || '-'}</p>
+        <p><strong>票价：</strong>${seat.price != null ? seat.price : '-'}</p>
+        <p><strong>售票时间：</strong>${seat.issuedAt ? new Date(seat.issuedAt).toLocaleString() : '-'}</p>
+        <p><strong>售票人：</strong>${seat.soldBy || '-'}</p>
+        <p><strong>检票时间：</strong>${seat.checkedInAt ? new Date(seat.checkedInAt).toLocaleString() : '-'}</p>
+        <p><strong>检票人：</strong>${seat.checkedInBy || '-'}</p>
+      `;
+      seatDetailBody.innerHTML = detailHtml;
+      dialogSeatDetail.showModal();
+      dialogSeatDetail.querySelectorAll('button[value="cancel"]').forEach((btn) =>
+        btn.addEventListener('click', () => dialogSeatDetail.close())
+      );
+    }
+    return;
+  }
+
   if (!activeProject) {
     setSeatTableStatus('请先选择项目。', true);
     return;
   }
-  const rowEl = button.closest('tr');
-  if (!rowEl) return;
-  const seatId = rowEl.dataset.seatId;
+  if (action !== 'save') return;
+
   const statusSelect = rowEl.querySelector('select[data-role="status"]');
   const ticketInput = rowEl.querySelector('input[data-role="ticket"]');
   const priceInput = rowEl.querySelector('input[data-role="price"]');
-  if (!seatId || !statusSelect || !ticketInput || !priceInput) return;
+  const checkinSelect = rowEl.querySelector('select[data-role="checkin"]');
+  if (!statusSelect || !ticketInput || !priceInput) return;
   const payload = {
     status: statusSelect.value,
     ticketNumber: ticketInput.value.trim(),
   };
+  if (checkinSelect) {
+    payload.checkinStatus = checkinSelect.value === 'checked' ? 'checked' : 'unchecked';
+  }
   const priceValueRaw = priceInput.value.trim();
   if (priceValueRaw === '') {
     payload.price = null;
@@ -2274,41 +2954,48 @@ seatTableBody.addEventListener('click', async (event) => {
   const originalLabel = button.textContent;
   button.textContent = '保存中...';
   setSeatTableStatus('正在保存...');
+
   try {
     const response = await authFetch(`/api/projects/${activeProject.id}/seats/${seatId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
     if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      throw new Error(error?.error || '保存失败');
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.error || '保存失败');
     }
     const data = await response.json();
     if (data?.seat) {
       const updatedSeat = data.seat;
       activeProject.seats[seatId] = updatedSeat;
       ensureActiveProjectMetadata();
+
       if (updatedSeat.price != null) {
         ensureLocalPriceColor(updatedSeat.price);
       }
       const affectedRows = new Set();
+
       if (Number.isInteger(updatedSeat.row)) {
         affectedRows.add(updatedSeat.row);
       }
       recomputeSeatLabels();
       refreshPriceLegend();
       const idsToUpdate = collectSeatIdsForRows(affectedRows);
+
       if (idsToUpdate.length) {
         refreshSeatElements(idsToUpdate);
       } else {
         refreshSeatElements([seatId]);
       }
+
       refreshSeatTable();
       updateZoneSummary();
       updateSaveButtonState();
       setSeatTableStatus('已更新座位信息。');
     }
+
     modifiedSeats.delete(seatId);
   } catch (error) {
     setSeatTableStatus(error.message, true);
@@ -2317,8 +3004,10 @@ seatTableBody.addEventListener('click', async (event) => {
     button.textContent = originalLabel;
   }
 });
-
-btnRefreshSeatTable.addEventListener('click', () => {
+if (btnRefreshInlineCheckins) {
+  btnRefreshInlineCheckins.addEventListener('click', () => refreshInlineCheckins());
+}
+if (btnRefreshSeatTable) btnRefreshSeatTable.addEventListener('click', () => {
   if (!activeProject) {
     setSeatTableStatus('请选择项目后再刷新。', true);
     return;
@@ -2329,6 +3018,7 @@ btnRefreshSeatTable.addEventListener('click', () => {
     .catch(() => {})
     .finally(() => {
       btnRefreshSeatTable.disabled = false;
+      refreshInlineCheckins(true);
     });
 });
 
@@ -2423,6 +3113,10 @@ adminTabs.forEach((tab) => {
     if ((tab.dataset.view || 'seats') === 'audit') {
       renderAuditLogs();
       renderBackups();
+    }
+    if ((tab.dataset.view || 'seats') === 'seats') {
+      loadTicketRules();
+      loadTicketCoupons();
     }
   });
 });
@@ -2543,16 +3237,14 @@ if (btnImportProject && inputImportFile) {
       const text = await file.text();
       const payload = JSON.parse(text);
       setSeatTableStatus('正在导入项目数据...');
-      const response = await authFetch(`/api/projects/${activeProject.id}/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => null);
-        throw new Error(err?.error || '导入失败');
-      }
-      const data = await response.json();
+      const data = await dangerousJsonRequest(
+        `/api/projects/${activeProject.id}/import`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        },
+        { actionLabel: `导入项目「${activeProject.name}」座位数据` }
+      );
       if (data?.project) {
         modifiedSeats.clear();
         selectedSeats.clear();
@@ -2580,14 +3272,70 @@ if (btnImportProject && inputImportFile) {
         updateSaveButtonState();
         scheduleProjectAutoSync();
         setSeatTableStatus('导入成功，已更新当前项目。');
+        if (data?.undo?.backupFilename) {
+          showUndoToast('项目导入已完成', data.undo.backupFilename, { onUndo: restoreFromBackup });
+        }
       }
     } catch (error) {
       setSeatTableStatus(error.message || '导入失败', true);
-    } finally {
-      inputImportFile.value = '';
-    }
+  } finally {
+    inputImportFile.value = '';
+  }
+});
+}
+
+if (btnDownloadProjectTemplate) {
+  btnDownloadProjectTemplate.addEventListener('click', () => {
+    downloadTextFile(
+      'project-import-template.json',
+      JSON.stringify(PROJECT_IMPORT_TEMPLATE, null, 2),
+      'application/json'
+    );
+    setSeatTableStatus('已下载项目导入模板。');
   });
 }
+
+const renderInlineCheckins = (logs = []) => {
+  if (!inlineCheckinTable) return;
+  inlineCheckinTable.innerHTML = '';
+  if (!logs.length) {
+    inlineCheckinTable.insertAdjacentHTML('beforeend', '<tr><td colspan="5">暂无记录</td></tr>');
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  logs.forEach((log) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${log.createdAt ? new Date(log.createdAt).toLocaleString() : '-'}</td>
+      <td>${log.seatLabel || `${(log.row ?? 0) + 1}排${(log.col ?? 0) + 1}号`}</td>
+      <td>${log.ticketNumber || '-'}</td>
+      <td>${log.status === 'success' ? '成功' : (log.message || log.status || '-')}</td>
+      <td>${log.checkedInBy || log.handledBy || '-'}</td>
+    `;
+    frag.appendChild(tr);
+  });
+  inlineCheckinTable.appendChild(frag);
+};
+
+const refreshInlineCheckins = async (silent = false) => {
+  if (!inlineCheckinTable) return;
+  if (!activeProject) {
+    inlineCheckinTable.innerHTML = '<tr><td colspan="5">请选择项目</td></tr>';
+    if (inlineCheckinStatus) inlineCheckinStatus.textContent = '';
+    return;
+  }
+  if (!silent && inlineCheckinStatus) inlineCheckinStatus.textContent = '正在获取检票记录...';
+  try {
+    const res = await authFetch(`/api/checkins?projectId=${activeProject.id}&limit=200`);
+    if (!res.ok) throw new Error('获取检票记录失败');
+    const data = await res.json();
+    renderInlineCheckins(data.logs || []);
+    if (inlineCheckinStatus) inlineCheckinStatus.textContent = '';
+  } catch (err) {
+    renderInlineCheckins([]);
+    if (inlineCheckinStatus) inlineCheckinStatus.textContent = err.message || '加载失败';
+  }
+};
 
 accountForm.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -2633,18 +3381,18 @@ accountTableBody.addEventListener('click', async (event) => {
   if (!rowEl) return;
   const username = rowEl.dataset.username;
   if (!username) return;
-  if (!confirmDanger(`确定要删除账号「${username}」吗？`)) return;
   button.disabled = true;
   try {
-    const response = await authFetch(`/api/accounts/${encodeURIComponent(username)}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      throw new Error(error?.error || '删除失败');
-    }
+    const data = await dangerousJsonRequest(
+      `/api/accounts/${encodeURIComponent(username)}`,
+      { method: 'DELETE' },
+      { actionLabel: `删除账号「${username}」` }
+    );
     setAccountStatus('账号已删除。');
     await fetchAccounts();
+    if (data?.undo?.backupFilename) {
+      showUndoToast('账号已删除', data.undo.backupFilename, { onUndo: restoreFromBackup });
+    }
   } catch (error) {
     setAccountStatus(error.message, true);
   } finally {
@@ -2652,7 +3400,7 @@ accountTableBody.addEventListener('click', async (event) => {
   }
 });
 
-btnApplyTicketing.addEventListener('click', async () => {
+if (btnApplyTicketing) btnApplyTicketing.addEventListener('click', async () => {
   if (!activeProject) {
     setTicketingStatus('请先选择项目。', true);
     return;
@@ -2694,16 +3442,14 @@ btnApplyTicketing.addEventListener('click', async () => {
   }
   setTicketingStatus('正在保存票号配置...');
   try {
-    const response = await authFetch(`/api/projects/${activeProject.id}/ticketing`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      throw new Error(error?.error || '保存失败');
-    }
-    const data = await response.json();
+    const data = await dangerousJsonRequest(
+      `/api/projects/${activeProject.id}/ticketing`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      { actionLabel: '重新生成票号配置' }
+    );
     mergeIncomingProject(data.project, {
       refreshSeatTable: true,
       refreshTicketing: true,
@@ -2713,6 +3459,9 @@ btnApplyTicketing.addEventListener('click', async () => {
     setTicketingDirty(false);
     setTicketingStatus('票号配置已保存并重新生成。');
     scheduleProjectAutoSync();
+    if (data?.undo?.backupFilename) {
+      showUndoToast('票号配置已更新', data.undo.backupFilename, { onUndo: restoreFromBackup });
+    }
   } catch (error) {
     setTicketingStatus(error.message, true);
   } finally {
@@ -2733,7 +3482,7 @@ if (btnCancelTicketing) {
   });
 }
 
-btnRegenerateTicketing.addEventListener('click', async () => {
+if (btnRegenerateTicketing) btnRegenerateTicketing.addEventListener('click', async () => {
   if (!activeProject) {
     setTicketingStatus('请先选择项目。', true);
     return;
@@ -2741,22 +3490,19 @@ btnRegenerateTicketing.addEventListener('click', async () => {
   btnRegenerateTicketing.disabled = true;
   setTicketingStatus('正在重新生成票号...');
   try {
-    const response = await authFetch(
+    const data = await dangerousJsonRequest(
       `/api/projects/${activeProject.id}/ticketing/regenerate`,
-      {
-        method: 'POST',
-      }
+      { method: 'POST' },
+      { actionLabel: '重算全部票号' }
     );
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      throw new Error(error?.error || '重新生成失败');
-    }
-    const data = await response.json();
     mergeIncomingProject(data.project, { refreshSeatTable: true, refreshTicketing: true });
     updateSelectedCount();
     updateSaveButtonState();
     setTicketingStatus('票号已重新生成。');
     scheduleProjectAutoSync();
+    if (data?.undo?.backupFilename) {
+      showUndoToast('票号已重新生成', data.undo.backupFilename, { onUndo: restoreFromBackup });
+    }
   } catch (error) {
     setTicketingStatus(error.message, true);
   } finally {
@@ -2764,26 +3510,21 @@ btnRegenerateTicketing.addEventListener('click', async () => {
   }
 });
 
-btnSaveProject.addEventListener('click', () => {
+if (btnSaveProject) btnSaveProject.addEventListener('click', () => {
   saveActiveProject({ manual: true, reason: 'manual' });
 });
 
-btnDeleteProject.addEventListener('click', async () => {
+if (btnDeleteProject) btnDeleteProject.addEventListener('click', async () => {
   if (!activeProject) {
     setStatus('请选择要删除的项目。', true);
     return;
   }
-  if (
-    !confirmDanger(`确定要删除售票项目「${activeProject.name}」吗？将会永久移除该项目。`)
-  ) {
-    return;
-  }
   try {
-    const response = await authFetch(`/api/projects/${activeProject.id}`, { method: 'DELETE' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      throw new Error(error?.error || '删除失败');
-    }
+    const data = await dangerousJsonRequest(
+      `/api/projects/${activeProject.id}`,
+      { method: 'DELETE' },
+      { actionLabel: `删除项目「${activeProject.name}」` }
+    );
     activeProject = null;
     stopProjectAutoSync();
     modifiedSeats.clear();
@@ -2795,17 +3536,20 @@ btnDeleteProject.addEventListener('click', async () => {
     updateSaveButtonState();
     await fetchProjects();
     setStatus('项目已删除。');
+    if (data?.undo?.backupFilename) {
+      showUndoToast('项目已删除', data.undo.backupFilename, { onUndo: restoreFromBackup });
+    }
   } catch (error) {
     setStatus(error.message, true);
   }
 });
 
-inputProjectName.addEventListener('input', () => {
+if (inputProjectName) inputProjectName.addEventListener('input', () => {
   updateSaveButtonState();
   scheduleAutoSave();
 });
 
-btnNewProject.addEventListener('click', () => {
+if (btnNewProject) btnNewProject.addEventListener('click', () => {
   newProjectNameInput.value = '';
   newProjectRowsInput.value = '';
   newProjectColsInput.value = '';
@@ -2820,6 +3564,12 @@ btnNewProject.addEventListener('click', () => {
 if (btnRefreshMerch) {
   btnRefreshMerch.addEventListener('click', () => {
     refreshMerchData();
+  });
+}
+
+if (btnRefreshPresaleSummary) {
+  btnRefreshPresaleSummary.addEventListener('click', () => {
+    loadPresaleSummary({ silent: false });
   });
 }
 
@@ -2840,6 +3590,170 @@ if (btnGoCheckoutModes) {
   });
 }
 
+if (btnOpenTicketCoupons) {
+  btnOpenTicketCoupons.addEventListener('click', async () => {
+    if (!activeProject) {
+      showToast('请先打开一个项目', 'error');
+      return;
+    }
+    await loadTicketRules();
+    await loadTicketCoupons();
+    openDialog(dialogTicketCoupons);
+  });
+}
+
+if (btnNewTicketRule) {
+  btnNewTicketRule.addEventListener('click', () => {
+    if (!activeProject) return;
+    resetTicketRuleForm();
+    openDialog(dialogTicketRuleForm);
+    inputTicketRuleName?.focus();
+  });
+}
+
+if (ticketRuleTableBody) {
+  ticketRuleTableBody.addEventListener('click', async (event) => {
+    const btn = event.target.closest('button[data-action]');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const rule = ticketDiscountRules.find((r) => r.id === id);
+    if (!rule) return;
+    if (btn.dataset.action === 'edit') {
+      resetTicketRuleForm();
+      if (inputTicketRuleId) inputTicketRuleId.value = rule.id;
+      if (inputTicketRuleName) inputTicketRuleName.value = rule.name || '';
+      if (inputTicketRuleCount) inputTicketRuleCount.value = String(rule.ticketCount || 1);
+      if (inputTicketRuleDiscount) inputTicketRuleDiscount.value = String(rule.discountRate || 10);
+      if (inputTicketRulePrices) {
+        inputTicketRulePrices.value = Array.isArray(rule.allowedPrices) ? rule.allowedPrices.join(',') : '';
+      }
+      if (selectTicketRuleEnabled) selectTicketRuleEnabled.value = rule.enabled === false ? 'false' : 'true';
+      openDialog(dialogTicketRuleForm);
+      return;
+    }
+    if (btn.dataset.action === 'delete') {
+      if (!confirmDanger(`确认删除折扣规则「${rule.name}」？`)) return;
+      btn.disabled = true;
+      try {
+        const resp = await authFetch(`/api/projects/${activeProject.id}/ticket-discounts/${rule.id}`, {
+          method: 'DELETE',
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || '删除失败');
+        showToast('规则已删除', 'success');
+        await loadTicketRules();
+      } catch (error) {
+        showToast(error.message || '删除失败', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  });
+}
+
+if (ticketRuleForm) {
+  ticketRuleForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!activeProject) return;
+    if (ticketRuleFormStatus) ticketRuleFormStatus.textContent = '正在保存...';
+    try {
+      const payload = {
+        id: inputTicketRuleId?.value || undefined,
+        name: inputTicketRuleName?.value || '',
+        ticketCount: Number(inputTicketRuleCount?.value || 1),
+        discountRate: Number(inputTicketRuleDiscount?.value || 10),
+        allowedPrices: inputTicketRulePrices?.value || '',
+        enabled: (selectTicketRuleEnabled?.value || 'true') !== 'false',
+      };
+      const resp = await authFetch(`/api/projects/${activeProject.id}/ticket-discounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || '保存失败');
+      if (ticketRuleFormStatus) ticketRuleFormStatus.textContent = '已保存。';
+      showToast('规则已保存', 'success');
+      closeDialog(dialogTicketRuleForm);
+      await loadTicketRules();
+    } catch (error) {
+      if (ticketRuleFormStatus) ticketRuleFormStatus.textContent = error.message || '保存失败';
+      showToast(error.message || '保存失败', 'error');
+    }
+  });
+}
+
+if (btnIssueTicketCoupons) {
+  btnIssueTicketCoupons.addEventListener('click', async () => {
+    if (!activeProject) return;
+    const ruleId = selectTicketRule?.value || '';
+    if (!ruleId) {
+      showToast('请选择折扣规则', 'error');
+      return;
+    }
+    const quantity = Math.max(1, Math.min(200, Math.floor(Number(inputTicketCouponQuantity?.value) || 1)));
+    btnIssueTicketCoupons.disabled = true;
+    setTicketCouponStatus('正在签发...');
+    try {
+      const resp = await authFetch(`/api/projects/${activeProject.id}/ticket-coupons/issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruleId, quantity }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || '签发失败');
+      const codes = (data.coupons || []).map((c) => c.code).join('，');
+      showToast(`已签发 ${data.coupons?.length || 0} 张`, 'success');
+      setTicketCouponStatus(codes ? `已签发：${codes}` : '签发完成。');
+      await loadTicketCoupons();
+    } catch (error) {
+      setTicketCouponStatus(error.message, true);
+      showToast(error.message || '签发失败', 'error');
+    } finally {
+      btnIssueTicketCoupons.disabled = false;
+    }
+  });
+}
+
+if (btnRefreshTicketCoupons) {
+  btnRefreshTicketCoupons.addEventListener('click', () => loadTicketCoupons());
+}
+
+if (inputTicketCouponSearch) {
+  inputTicketCouponSearch.addEventListener('input', () => loadTicketCoupons());
+}
+
+if (selectTicketCouponStatus) {
+  selectTicketCouponStatus.addEventListener('change', () => loadTicketCoupons());
+}
+
+if (ticketCouponTableBody) {
+  ticketCouponTableBody.addEventListener('click', async (event) => {
+    const btn = event.target.closest('button[data-action="void"]');
+    if (!btn) return;
+    const code = btn.dataset.code;
+    if (!code) return;
+    if (!confirmDanger(`确认作废优惠券 ${code}？`)) return;
+    const reason = window.prompt('作废原因（可选）：', '') || '';
+    btn.disabled = true;
+    try {
+      const resp = await authFetch(`/api/projects/${activeProject.id}/ticket-coupons/${encodeURIComponent(code)}/void`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true, reason }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || '作废失败');
+      showToast('已作废优惠券', 'success');
+      await loadTicketCoupons();
+    } catch (error) {
+      showToast(error.message || '作废失败', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 if (btnRefreshOrders) {
   btnRefreshOrders.addEventListener('click', () => {
     loadMerchOrders();
@@ -2854,6 +3768,14 @@ if (merchOrdersTableBody) {
     if (!orderId) return;
     const order = merchOrders.find((item) => item.id === orderId);
     if (!order) return;
+    if (button.dataset.action === 'open-voucher') {
+      if (order.voucherCode) {
+        await openVoucherAdminDialog(order.voucherCode);
+      } else {
+        showToast('该记录没有预购券码', 'error');
+      }
+      return;
+    }
     if (button.dataset.action === 'edit-order') {
       populateOrderForm(order);
       openDialog(dialogOrderForm);
@@ -2864,21 +3786,142 @@ if (merchOrdersTableBody) {
       return;
     }
     if (button.dataset.action === 'delete-order') {
-      if (!confirmDanger('确定要删除该销售记录吗？')) return;
       button.disabled = true;
       try {
-        const response = await authFetch(`/api/merch/orders/${orderId}`, { method: 'DELETE' });
-        if (!response.ok) {
-          const error = await response.json().catch(() => null);
-          throw new Error(error?.error || '删除失败');
-        }
+        const data = await dangerousJsonRequest(
+          `/api/merch/orders/${orderId}`,
+          { method: 'DELETE' },
+          { actionLabel: `删除销售记录 ${order.orderNumber || orderId}` }
+        );
         setOrderFormStatus('记录已删除。');
         await loadMerchOrders();
+        if (data?.undo?.backupFilename) {
+          showUndoToast('销售记录已删除', data.undo.backupFilename, { onUndo: restoreFromBackup });
+        }
       } catch (error) {
         setOrderFormStatus(error.message, true);
       } finally {
         button.disabled = false;
       }
+    }
+  });
+}
+
+if (inputVoucherConfirm) {
+  inputVoucherConfirm.addEventListener('input', () => {
+    updateVoucherAdminButtons(activeVoucherAdminVoucher);
+  });
+}
+
+if (btnVoucherReplace) {
+  btnVoucherReplace.addEventListener('click', async () => {
+    if (!activeVoucherAdminCode) return;
+    btnVoucherReplace.disabled = true;
+    try {
+      setVoucherAdminStatus('正在换码/重发...');
+      const reason = typeof inputVoucherReason?.value === 'string' ? inputVoucherReason.value.trim() : '';
+      const newCode = typeof inputVoucherNewCode?.value === 'string' ? inputVoucherNewCode.value.trim() : '';
+      const data = await runVoucherAdminAction({
+        code: activeVoucherAdminCode,
+        endpoint: 'replace',
+        payload: { confirm: true, reason, newCode },
+      });
+      const nextVoucher = data?.voucher || null;
+      if (nextVoucher?.code) {
+        activeVoucherAdminCode = nextVoucher.code;
+        activeVoucherAdminVoucher = nextVoucher;
+        if (inputVoucherConfirm) inputVoucherConfirm.value = '';
+        showToast(`换码完成，新券码：${nextVoucher.code}`, 'success');
+      } else {
+        showToast('换码完成', 'success');
+      }
+      await refreshMerchData({ silent: true });
+      await refreshVoucherAdminDialog();
+      setVoucherAdminStatus('换码/重发完成。');
+    } catch (error) {
+      setVoucherAdminStatus(error.message, true);
+      showToast(error.message || '操作失败', 'error');
+    } finally {
+      btnVoucherReplace.disabled = false;
+    }
+  });
+}
+
+if (btnVoucherUndoRedeem) {
+  btnVoucherUndoRedeem.addEventListener('click', async () => {
+    if (!activeVoucherAdminCode) return;
+    btnVoucherUndoRedeem.disabled = true;
+    try {
+      setVoucherAdminStatus('正在撤销核销...');
+      const reason = typeof inputVoucherReason?.value === 'string' ? inputVoucherReason.value.trim() : '';
+      await runVoucherAdminAction({
+        code: activeVoucherAdminCode,
+        endpoint: 'undo-redeem',
+        payload: { confirm: true, reason },
+      });
+      showToast('已撤销核销', 'success');
+      await refreshMerchData({ silent: true });
+      await refreshVoucherAdminDialog();
+      setVoucherAdminStatus('已撤销核销。');
+    } catch (error) {
+      setVoucherAdminStatus(error.message, true);
+      showToast(error.message || '操作失败', 'error');
+    } finally {
+      btnVoucherUndoRedeem.disabled = false;
+    }
+  });
+}
+
+if (btnVoucherVoid) {
+  btnVoucherVoid.addEventListener('click', async () => {
+    if (!activeVoucherAdminCode) return;
+    if (!window.confirm(`确认作废预购券 ${activeVoucherAdminCode}？该操作不可逆（可通过换码/重发处理遗失/印错）。`)) {
+      return;
+    }
+    btnVoucherVoid.disabled = true;
+    try {
+      setVoucherAdminStatus('正在作废...');
+      const reason = typeof inputVoucherReason?.value === 'string' ? inputVoucherReason.value.trim() : '';
+      await runVoucherAdminAction({
+        code: activeVoucherAdminCode,
+        endpoint: 'void',
+        payload: { confirm: true, reason },
+      });
+      showToast('已作废预购券', 'success');
+      await refreshMerchData({ silent: true });
+      await refreshVoucherAdminDialog();
+      setVoucherAdminStatus('已作废。');
+    } catch (error) {
+      setVoucherAdminStatus(error.message, true);
+      showToast(error.message || '操作失败', 'error');
+    } finally {
+      btnVoucherVoid.disabled = false;
+    }
+  });
+}
+
+if (btnVoucherRefund) {
+  btnVoucherRefund.addEventListener('click', async () => {
+    if (!activeVoucherAdminCode) return;
+    if (!window.confirm(`确认对预购券 ${activeVoucherAdminCode} 做“退款”标记？将阻止后续核销。`)) return;
+    btnVoucherRefund.disabled = true;
+    try {
+      setVoucherAdminStatus('正在退款...');
+      const reason = typeof inputVoucherReason?.value === 'string' ? inputVoucherReason.value.trim() : '';
+      await runVoucherAdminAction({
+        code: activeVoucherAdminCode,
+        endpoint: 'refund',
+        payload: { confirm: true, reason },
+      });
+      showToast('已标记退款', 'success');
+      await refreshMerchData({ silent: true });
+      await refreshVoucherAdminDialog();
+      setVoucherAdminStatus('已退款。');
+    } catch (error) {
+      setVoucherAdminStatus(error.message, true);
+      showToast(error.message || '操作失败', 'error');
+    } finally {
+      btnVoucherRefund.disabled = false;
     }
   });
 }
@@ -2956,19 +3999,21 @@ if (checkinSeatForm) {
     try {
       checkinSeatStatus.textContent = '正在应用...';
       checkinSeatStatus.style.color = '#20639b';
-      const response = await authFetch('/api/checkins/seat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticketNumber: ticket, action }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error || '操作失败');
-      }
+      const data = await dangerousJsonRequest(
+        '/api/checkins/seat',
+        {
+          method: 'POST',
+          body: JSON.stringify({ ticketNumber: ticket, action }),
+        },
+        { actionLabel: `修改检票状态 ${ticket}` }
+      );
       checkinSeatStatus.textContent = '已更新检票状态。';
       checkinSeatStatus.style.color = '#20639b';
       inputCheckinTicket.value = '';
       await loadCheckinLogs();
+      if (data?.undo?.backupFilename) {
+        showUndoToast('检票状态已更新', data.undo.backupFilename, { onUndo: restoreFromBackup });
+      }
     } catch (error) {
       checkinSeatStatus.textContent = error.message || '操作失败';
       checkinSeatStatus.style.color = '#ed553b';
@@ -3037,14 +4082,26 @@ if (btnExportOrders) {
   });
 }
 
-const resolveProductImage = (productId) => {
+if (btnDownloadOrdersTemplate) {
+  btnDownloadOrdersTemplate.addEventListener('click', () => {
+    downloadTextFile(
+      'merch-orders-import-template.json',
+      JSON.stringify(ORDERS_IMPORT_TEMPLATE, null, 2),
+      'application/json'
+    );
+    setOrderFormStatus('已下载订单导入模板。');
+  });
+}
+
+const resolveProductImage = (productId, fallbackPath) => {
   const product = merchProducts.find((p) => p.id === productId);
-  if (!product) return PLACEHOLDER_IMAGE;
-  if (product.imageData) return product.imageData;
-  if (product.imagePath) {
-    if (product.imagePath.startsWith('http')) return product.imagePath;
-    if (product.imagePath.startsWith('/')) return `${window.location.origin}${product.imagePath}`;
-    return `${window.location.origin}/${product.imagePath}`;
+  const imagePath = product?.imagePath || fallbackPath || null;
+  const imageData = product?.imageData || null;
+  if (imageData) return imageData;
+  if (imagePath) {
+    if (String(imagePath).startsWith('http')) return imagePath;
+    if (String(imagePath).startsWith('/')) return `${window.location.origin}${imagePath}`;
+    return `${window.location.origin}/${imagePath}`;
   }
   return PLACEHOLDER_IMAGE;
 };
@@ -3062,7 +4119,7 @@ const buildOrderPdfHtml = (orders = []) => {
         .map(
           (item) => `
         <div class="item">
-          <img src="${resolveProductImage(item.productId)}" alt="${item.name}" />
+          <img src="${resolveProductImage(item.productId, item.imagePath)}" alt="${item.name}" />
           <div>
             <div class="item-name">${item.name}</div>
             <div class="item-meta">数量：${item.quantity} | 单价：${formatCurrency(
@@ -3333,17 +4390,18 @@ if (btnOrdersNext) {
 
 if (btnClearOrders) {
   btnClearOrders.addEventListener('click', async () => {
-    if (!confirmDanger('确定要清空所有销售记录吗？')) return;
     setOrderFormStatus('正在清空记录...');
     try {
-      const response = await authFetch('/api/merch/orders/clear', { method: 'POST' });
-      if (!response.ok) {
-        const error = await response.json().catch(() => null);
-        throw new Error(error?.error || '清空失败');
-      }
-      await response.json();
+      const data = await dangerousJsonRequest(
+        '/api/merch/orders/clear',
+        { method: 'POST' },
+        { actionLabel: '清空全部销售记录' }
+      );
       await loadMerchOrders();
       setOrderFormStatus('所有记录已清空。');
+      if (data?.undo?.backupFilename) {
+        showUndoToast('已清空销售记录', data.undo.backupFilename, { onUndo: restoreFromBackup });
+      }
     } catch (error) {
       setOrderFormStatus(error.message, true);
     }
@@ -3461,17 +4519,22 @@ if (merchProductListEl) {
       }
     }
     if (action === 'delete-product') {
-      if (!confirmDanger(`确定删除商品「${product.name}」吗？该操作不可恢复。`)) return;
+      button.disabled = true;
       try {
-        const response = await authFetch(`/api/merch/products/${product.id}`, { method: 'DELETE' });
-        if (!response.ok) {
-          const error = await response.json().catch(() => null);
-          throw new Error(error?.error || '删除失败');
-        }
+        const data = await dangerousJsonRequest(
+          `/api/merch/products/${product.id}`,
+          { method: 'DELETE' },
+          { actionLabel: `删除商品「${product.name}」` }
+        );
         showToast('商品已删除', 'success');
         await loadMerchProducts();
+        if (data?.undo?.backupFilename) {
+          showUndoToast('商品已删除', data.undo.backupFilename, { onUndo: restoreFromBackup });
+        }
       } catch (error) {
         setMerchFormStatus(error.message, true);
+      } finally {
+        button.disabled = false;
       }
     }
   });
@@ -3542,16 +4605,18 @@ if (checkoutModeTableBody) {
       return;
     }
     if (button.dataset.action === 'delete-mode') {
-      if (!confirmDanger(`确定要删除结账模式「${mode.name}」吗？`)) return;
       button.disabled = true;
       try {
-        const response = await authFetch(`/api/merch/modes/${mode.id}`, { method: 'DELETE' });
-        if (!response.ok) {
-          const error = await response.json().catch(() => null);
-          throw new Error(error?.error || '删除失败');
-        }
+        const data = await dangerousJsonRequest(
+          `/api/merch/modes/${mode.id}`,
+          { method: 'DELETE' },
+          { actionLabel: `删除结账模式「${mode.name}」` }
+        );
         setModeFormStatus('结账模式已删除。');
         await loadCheckoutModes();
+        if (data?.undo?.backupFilename) {
+          showUndoToast('结账模式已删除', data.undo.backupFilename, { onUndo: restoreFromBackup });
+        }
       } catch (error) {
         setModeFormStatus(error.message, true);
       } finally {
@@ -3568,7 +4633,7 @@ if (btnCancelNewProject) {
   });
 }
 
-btnCreateProject.addEventListener('click', async () => {
+if (btnCreateProject) btnCreateProject.addEventListener('click', async () => {
   const name = newProjectNameInput.value.trim();
   const rows = Number(newProjectRowsInput.value);
   const cols = Number(newProjectColsInput.value);
@@ -3637,7 +4702,7 @@ btnCreateProject.addEventListener('click', async () => {
   }
 });
 
-btnLogout.addEventListener('click', async () => {
+if (btnLogout) btnLogout.addEventListener('click', async () => {
   try {
     await fetch('/api/auth/logout', { method: 'POST' });
   } catch {
@@ -3646,7 +4711,7 @@ btnLogout.addEventListener('click', async () => {
   window.location.href = '/login.html?role=admin';
 });
 
-btnBackHome.addEventListener('click', () => {
+if (btnBackHome) btnBackHome.addEventListener('click', () => {
   window.location.href = '/';
 });
 
@@ -3789,18 +4854,24 @@ const bindAuditBackupEvents = () => {
       if (!btn) return;
       const name = btn.dataset.backup;
       if (!name) return;
-      if (!window.confirm(`确定恢复备份 ${name} ？当前状态将被覆盖。`)) return;
       try {
-        const response = await authFetch('/api/backups/restore', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: name }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || '恢复失败');
-        showToast('备份已恢复，请刷新页面', 'success');
+        const data = await dangerousJsonRequest(
+          '/api/backups/restore',
+          {
+            method: 'POST',
+            body: JSON.stringify({ filename: name }),
+          },
+          { actionLabel: `恢复备份 ${name}` }
+        );
+        showToast('备份已恢复，数据已刷新。', 'success');
+        if (data?.undo?.backupFilename) {
+          showUndoToast('已恢复备份', data.undo.backupFilename, { onUndo: restoreFromBackup });
+        }
         renderBackups();
         renderAuditLogs();
+        await fetchProjects();
+        await refreshMerchData();
+        await loadMerchOrders();
       } catch (error) {
         showToast(error.message || '恢复失败', 'error');
       }

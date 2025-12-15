@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>运维面板</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel">
+        <div class="panel__heading">
+          <h2>健康 / 指标</h2>
+          <button class="button" id="btn-refresh" type="button">刷新</button>
+          <span id="ops-status"></span>
+        </div>
+        <pre id="ops-metrics">等待刷新...</pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel__heading">
+          <h2>备份与日志下载</h2>
+          <button class="button" id="btn-refresh-backups" type="button">刷新列表</button>
+          <button class="button" id="btn-download-state" type="button">下载当前 state</button>
+        </div>
+        <div id="backup-list">加载中...</div>
+      </section>
+    </main>
+    <script type="module" src="/js/status.js"></script>
+  </body>
+</html>

@@ -18,6 +18,42 @@ const authFetch = async (input, init = {}) => {
   return res;
 };
 
+const cliJsonRequest = async (input, init = {}, { actionLabel = '' } = {}) => {
+  const run = async (confirmToken) => {
+    const headers = { ...(init.headers || {}) };
+    let bodyObj = null;
+    if (init.body && typeof init.body === 'string') {
+      bodyObj = JSON.parse(init.body);
+    } else if (init.body && typeof init.body === 'object') {
+      bodyObj = init.body;
+    } else if (headers['Content-Type'] === 'application/json') {
+      bodyObj = {};
+    }
+    if (confirmToken) {
+      if (!bodyObj || typeof bodyObj !== 'object') bodyObj = {};
+      bodyObj.confirmToken = confirmToken;
+    }
+    const body = bodyObj ? JSON.stringify(bodyObj) : init.body;
+    const res = await authFetch(input, { ...init, headers, body });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  };
+
+  let { res, data } = await run();
+  if (res.status === 409 && data && data.code === 'CONFIRM_REQUIRED') {
+    const detailText = data.detail ? `\n${data.detail}` : '';
+    const ok = window.confirm(`该操作需要二次确认：${data.action || actionLabel || ''}${detailText}\n\n确认继续？`);
+    if (!ok) {
+      throw new Error('已取消');
+    }
+    ({ res, data } = await run(data.confirmToken));
+  }
+  if (!res.ok) {
+    throw new Error(data?.error || '请求失败');
+  }
+  return data;
+};
+
 const downloadBlob = (filename, blob) => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -61,7 +97,6 @@ const formatDisplay = (data) => {
       }
     });
     return lines.join('\n');
-    return data.map((v) => formatValue(v)).join(', ');
   }
   if (typeof data === 'object') {
     return Object.entries(data)
@@ -630,14 +665,19 @@ const commands = {
   },
   'checkin-clear': async (ticketCode) => {
     if (!ticketCode) throw new Error('用法：checkin-clear <ticketCode>');
-    const res = await authFetch('/api/checkins/seat', {
+    const data = await cliJsonRequest(
+      '/api/checkins/seat',
+      {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticketNumber: ticketCode, action: 'clear' }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || '清除失败');
+      },
+      { actionLabel: '清除检票状态' }
+    );
     log(`已清除 ${ticketCode} 检票状态`, 'success');
+    if (data.undo?.backupFilename) {
+      log(`可撤销：在管理端恢复备份 ${data.undo.backupFilename}`, 'info');
+    }
   },
   'merch-products': async () => {
     const res = await authFetch('/api/merch/products');
@@ -906,10 +946,15 @@ const commands = {
   },
   'merch-order-del': async (id) => {
     if (!id) throw new Error('用法：merch-order-del <id>');
-    const res = await authFetch(`/api/merch/orders/${id}`, { method: 'DELETE' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || '删除失败');
+    const data = await cliJsonRequest(
+      `/api/merch/orders/${id}`,
+      { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+      { actionLabel: '删除文创订单' }
+    );
     log(`订单 ${id} 已删除`, 'success');
+    if (data.undo?.backupFilename) {
+      log(`可撤销：在管理端恢复备份 ${data.undo.backupFilename}`, 'info');
+    }
   },
   'merch-order': async (...args) => {
     const kv = Object.fromEntries(
@@ -978,12 +1023,15 @@ const commands = {
   },
   'account-del': async (username) => {
     if (!username) throw new Error('用法：account-del <u>');
-    const res = await authFetch(`/api/accounts/${encodeURIComponent(username)}`, {
-      method: 'DELETE',
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || '删除失败');
+    const data = await cliJsonRequest(
+      `/api/accounts/${encodeURIComponent(username)}`,
+      { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+      { actionLabel: '删除账号' }
+    );
     log(`账号 ${username} 已删除`, 'success');
+    if (data.undo?.backupFilename) {
+      log(`可撤销：在管理端恢复备份 ${data.undo.backupFilename}`, 'info');
+    }
   },
 };
 

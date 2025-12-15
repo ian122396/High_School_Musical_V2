@@ -87,59 +87,20 @@
           align-items: stretch;
         }
       }
+      .status-redirect-note {
+        padding: 20px;
+        font-family: Arial, sans-serif;
+      }
     </style>
   </head>
   <body>
-    <div class="layout">
-      <header class="card">
-        <h2>系统状态与压力测试</h2>
-        <div class="controls">
-          <button class="primary" id="btn-refresh-metrics" type="button">刷新状态</button>
-          <span id="metrics-status"></span>
-        </div>
-      </header>
-
-      <section class="grid-2">
-        <div class="card">
-          <h2>服务器状态</h2>
-          <div id="metrics-summary" class="metrics"></div>
-        </div>
-        <div class="card">
-          <h2>计数与连接</h2>
-          <div id="metrics-counters" class="metrics"></div>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>压力测试（浏览器本地并发）</h2>
-        <div class="controls">
-          <label>URL
-            <input id="loadtest-url" type="text" value="/healthz" size="28" />
-          </label>
-          <label>并发
-            <input id="loadtest-concurrency" type="number" min="1" value="10" />
-          </label>
-          <label>时长(秒)
-            <input id="loadtest-duration" type="number" min="1" value="10" />
-          </label>
-          <label>请求方式
-            <select id="loadtest-method">
-              <option value="GET">GET</option>
-              <option value="POST">POST</option>
-            </select>
-          </label>
-          <button class="primary" id="btn-start-loadtest" type="button">开始测试</button>
-          <span id="loadtest-status"></span>
-        </div>
-        <pre id="loadtest-result">等待测试...</pre>
-      </section>
-
-      <section class="card">
-        <h2>接口状态（示例）</h2>
-        <pre>健康检查：GET /healthz
-指标：GET /api/metrics （需管理员登录）</pre>
-      </section>
-    </div>
-    <script type="module" src="/js/status.js"></script>
+    <script>
+      // 将旧的 status 页面统一跳转到运维面板
+      window.location.replace('/ops.html');
+    </script>
+    <p class="status-redirect-note">
+      正在跳转到运维面板 /ops.html，如果没有自动跳转请
+      <a href="/ops.html">点击这里</a>。
+    </p>
   </body>
 </html>

@@ -2,11 +2,11 @@
   "projects": {
     "cc7a2d82-589a-4046-9f3c-f0494a09ee4d": {
       "id": "cc7a2d82-589a-4046-9f3c-f0494a09ee4d",
-      "name": "歌舞",
+      "name": "歌舞青春",
       "rows": 29,
       "cols": 38,
       "createdAt": 1764082480568,
-      "updatedAt": 1764844629213,
+      "updatedAt": 1765697794977,
       "seats": {
         "r0-c0": {
           "row": 0,
@@ -16679,7 +16679,9 @@
           "leftNext": 37,
           "rightNext": 38
         }
-      }
+      },
+      "ticketDiscountRules": {},
+      "ticketCoupons": {}
     }
   },
   "accounts": {
@@ -16742,25 +16744,25 @@
         "id": "54d89189-05f4-44c7-a321-d3e13b2e8584",
         "name": "拼图-飞耀喷泉（配相框）",
         "price": 19.9,
-        "stock": 53,
+        "stock": 51,
         "description": "飞耀喷泉拼图",
         "imageData": null,
         "imagePath": "/uploads/merch/5f687202-25b7-416f-b2fc-119cccbd5056.jpg",
         "enabled": true,
         "createdAt": 1764403708114,
-        "updatedAt": 1764688004083
+        "updatedAt": 1765625046635
       },
       "62ec9850-b68e-4394-afa2-88eb7b99ac21": {
         "id": "62ec9850-b68e-4394-afa2-88eb7b99ac21",
         "name": "拼图-乐家花园（配相框）",
         "price": 19.9,
-        "stock": 55,
+        "stock": 53,
         "description": "乐家花园拼图",
         "imageData": null,
         "imagePath": "/uploads/merch/e0d0537b-0b8f-491e-be84-e17cc2b2b31c.jpg",
         "enabled": true,
         "createdAt": 1764403735157,
-        "updatedAt": 1764757398044
+        "updatedAt": 1765625046635
       }
     },
     "checkoutModes": {
@@ -16779,8 +16781,74 @@
       }
     },
     "orders": [],
-    "_orderNoSeed": 11
+    "_orderNoSeed": 13,
+    "vouchers": {
+      "NO.8120251231000": {
+        "code": "NO.8120251231000",
+        "status": "redeemed",
+        "orderId": "8e2fbe82-2c41-4133-b749-c6beb5e3721b",
+        "orderNumber": "2975578300133",
+        "createdAt": 1765625030283,
+        "createdBy": "sales",
+        "redeemedAt": 1765625046635,
+        "redeemedBy": "sales",
+        "items": [
+          {
+            "productId": "62ec9850-b68e-4394-afa2-88eb7b99ac21",
+            "name": "拼图-乐家花园（配相框）",
+            "quantity": 1,
+            "unitPrice": 19.9,
+            "subtotal": 19.9,
+            "imagePath": "/uploads/merch/e0d0537b-0b8f-491e-be84-e17cc2b2b31c.jpg"
+          },
+          {
+            "productId": "54d89189-05f4-44c7-a321-d3e13b2e8584",
+            "name": "拼图-飞耀喷泉（配相框）",
+            "quantity": 1,
+            "unitPrice": 19.9,
+            "subtotal": 19.9,
+            "imagePath": "/uploads/merch/5f687202-25b7-416f-b2fc-119cccbd5056.jpg"
+          }
+        ],
+        "checkoutModeName": "原价",
+        "paymentMethod": "现金（人民币）",
+        "note": "",
+        "totalBefore": 39.8,
+        "totalAfter": 39.8,
+        "discount": 0
+      }
+    },
+    "voucherRedemptions": []
   },
-  "auditLog": [],
+  "auditLog": [
+    {
+      "id": "1d9f95fc-ac10-4885-a501-b3ea2211eb20",
+      "createdAt": 1765625502645,
+      "actor": "admin",
+      "action": "merch-order:delete",
+      "detail": "删除订单 8242de18-b71c-474b-96ad-bfb27f9d2f87"
+    },
+    {
+      "id": "654b26f2-af6a-458c-a181-1d41ce3a420f",
+      "createdAt": 1765625046635,
+      "actor": "sales",
+      "action": "merch-voucher:redeem",
+      "detail": "核销预购券 NO.8120251231000 -> 订单 8e2fbe82-2c41-4133-b749-c6beb5e3721b"
+    },
+    {
+      "id": "556fc3bb-150e-410c-a626-85b94889150a",
+      "createdAt": 1765625030283,
+      "actor": "sales",
+      "action": "merch-voucher:issue",
+      "detail": "签发预购券 NO.8120251231000 -> 订单 8e2fbe82-2c41-4133-b749-c6beb5e3721b"
+    },
+    {
+      "id": "8c07d701-0c71-447d-8b2e-12a157b1d029",
+      "createdAt": 1765624998156,
+      "actor": "sales",
+      "action": "merch-order:create",
+      "detail": "创建文创订单 8242de18-b71c-474b-96ad-bfb27f9d2f87"
+    }
+  ],
   "checkInLogs": []
 }

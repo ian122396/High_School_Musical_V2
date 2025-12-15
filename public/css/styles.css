@@ -138,6 +138,69 @@ a {
   text-decoration: underline;
 }
 
+.button--inline {
+  display: inline;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.seat-badge--available {
+  background: #2b8a3e;
+}
+
+.seat-badge--locked-self {
+  background: #ffd166;
+}
+
+.seat-badge--locked-other {
+  background: #cbd3de;
+}
+
+.seat-badge--sold {
+  background: #ffffff;
+  border: 1px solid #d8e2f1;
+}
+
+.seat-badge--disabled {
+  background: #d7deeb;
+}
+
+.seat-table-actions--mt {
+  margin-top: 8px;
+}
+
+.panel__heading--mt {
+  margin-top: 16px;
+}
+
+.panel--mt {
+  margin-top: 16px;
+}
+
+.table__col--select {
+  width: 48px;
+}
+
+.account-manager-grid--ticket-coupons {
+  grid-template-columns: 1.05fr 0.95fr;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 12px 0;
+}
+
+.seat-table-actions--gap-sm {
+  gap: 8px;
+}
+
+.table-wrap--scroll {
+  margin-top: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
 .button--active {
   background: #1f76d0;
   color: #fff;
@@ -220,6 +283,110 @@ input[type='password']:focus {
 
 .toast--success {
   background: #1f7a40;
+}
+
+.button--sm {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  border-radius: 10px;
+}
+
+.status-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.checkin-result .status-actions {
+  margin-top: 10px;
+}
+
+.scan-methods {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e3ebf6;
+  background: #f7fbff;
+  display: grid;
+  gap: 8px;
+}
+
+.scan-methods--modal {
+  margin-top: 12px;
+}
+
+.scan-methods__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.scan-methods__title {
+  font-weight: 700;
+  color: #1b2a3b;
+}
+
+.scan-methods__hint {
+  color: #5d6b80;
+  font-size: 0.9rem;
+}
+
+.scan-badges {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid #d7e6fa;
+  background: #fff;
+  font-size: 0.85rem;
+  color: #1b2a3b;
+  white-space: nowrap;
+}
+
+.scan-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8aa0b8;
+  flex: none;
+}
+
+.scan-badge--ok::before {
+  background: #22c55e;
+}
+
+.scan-badge--warn::before {
+  background: #f59e0b;
+}
+
+.scan-badge--error::before {
+  background: #ef4444;
+}
+
+.scan-methods__actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .visually-hidden {
@@ -626,6 +793,18 @@ input[type='password']:focus {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
+.mt-6 {
+  margin-top: 6px;
+}
+
+.status--ok {
+  color: #1f76d0;
+}
+
+.status--error {
+  color: #e14949;
+}
+
 .project-list {
   list-style: none;
   padding: 0;
@@ -695,6 +874,25 @@ input[type='password']:focus {
   display: flex;
   justify-content: flex-end;
   gap: 0.6rem;
+}
+
+.panel--subtle {
+  border: 1px solid #d8e2f1;
+  background: #f9fbff;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  margin-top: 0.8rem;
+}
+
+.panel--subtle .panel__heading {
+  padding: 0;
+  border: none;
+  margin-bottom: 0.6rem;
+}
+
+.panel--subtle .panel__actions {
+  padding: 0;
+  justify-content: flex-end;
 }
 
 .sales-layout {
@@ -953,6 +1151,93 @@ input[type='password']:focus {
 .account-table td:last-child,
 .account-table th:last-child {
   text-align: right;
+}
+
+/* 移动端/小屏适配 */
+@media (max-width: 900px) {
+  .panel {
+    padding: 1.2rem 1rem;
+  }
+  .form-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .workspace-actions,
+  .seat-table-actions,
+  .table-pagination {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .table--sticky-wrapper,
+  .seat-table-wrapper {
+    overflow-x: auto;
+  }
+  .table--sticky {
+    min-width: 720px;
+  }
+  .seat-table-wrapper::after,
+  .table--sticky-wrapper::after {
+    content: '左右滑动查看更多';
+    display: block;
+    text-align: right;
+    font-size: 0.8rem;
+    color: #6d7a8d;
+    padding: 0.25rem 0.35rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .toolbar {
+    padding: 0.75rem 1rem;
+    flex-direction: column;
+    gap: 0.4rem;
+    align-items: flex-start;
+  }
+  .panel__heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .seat-table-actions,
+  .workspace-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  input[type='text'],
+  input[type='number'],
+  input[type='password'],
+  select {
+    font-size: 0.95rem;
+  }
+  .table--sticky {
+    min-width: 600px;
+    font-size: 0.9rem;
+  }
+  .form-long {
+    padding: 0.75rem;
+    background: #f7f9fc;
+    border: 1px solid #e4e8f0;
+    border-radius: 10px;
+  }
+  .form-step {
+    border-bottom: 1px solid #e4e8f0;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  details.foldable {
+    border: 1px solid #e4e8f0;
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    background: #fff;
+  }
+  details.foldable summary {
+    cursor: pointer;
+    font-weight: 600;
+    outline: none;
+  }
+  details.foldable[open] {
+    box-shadow: 0 6px 16px rgba(16, 44, 90, 0.08);
+  }
 }
 
 /* --- Generic tables --- */
@@ -1295,6 +1580,60 @@ input[type='password']:focus {
   pointer-events: all;
 }
 
+.scan-help {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 1px dashed #cdd9ea;
+  background: #f7f9fc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scan-help__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.scan-help__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.scan-help__url {
+  background: #fff;
+  border: 1px solid #d8e2f1;
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  overflow: auto;
+}
+
+.scan-help__url code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  user-select: all;
+}
+
+.scan-help__steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  color: #4b5d70;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.scan-help__hint {
+  margin: 0;
+}
+
 .hidden {
   display: none !important;
 }
@@ -1313,6 +1652,11 @@ input[type='password']:focus {
   background: #f2f4f8;
   font-weight: 600;
   font-size: 1rem;
+}
+
+.checkin-result--notice {
+  background: #e8f3ff;
+  color: #1f76d0;
 }
 
 .checkin-result--success {

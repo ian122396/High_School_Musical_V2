@@ -11,8 +11,14 @@ const projectHint = document.getElementById('project-hint');
 const scanOverlay = document.getElementById('scan-overlay');
 const videoEl = document.getElementById('scan-video');
 const scanCanvas = document.getElementById('scan-canvas');
+const issueHttpsHelp = document.getElementById('issue-https-help');
+const issueHttpsUrlEl = document.getElementById('issue-https-url');
+const btnCopyIssueHttps = document.getElementById('btn-copy-issue-https');
+const btnOpenIssueHttps = document.getElementById('btn-open-issue-https');
 const manualCodeInput = document.getElementById('manual-ticket-code');
+const issueUploadFile = document.getElementById('issue-upload-file');
 const btnManualConfirm = document.getElementById('btn-manual-confirm');
+const btnIssueUploadScan = document.getElementById('btn-issue-upload-scan');
 const btnLogout = document.getElementById('btn-logout');
 const btnHome = document.getElementById('btn-home');
 const salesZoneSummaryList = document.getElementById('sales-zone-summary-list');
@@ -20,6 +26,11 @@ const autoSelectPrice = document.getElementById('auto-select-price');
 const autoSelectCount = document.getElementById('auto-select-count');
 const btnAutoSelect = document.getElementById('btn-auto-select');
 const btnClearSelected = document.getElementById('btn-clear-selected');
+const inputTicketCoupon = document.getElementById('input-ticket-coupon');
+const btnScanTicketCoupon = document.getElementById('btn-scan-ticket-coupon');
+const btnLookupTicketCoupon = document.getElementById('btn-lookup-ticket-coupon');
+const btnClearTicketCoupon = document.getElementById('btn-clear-ticket-coupon');
+const ticketCouponInfo = document.getElementById('ticket-coupon-info');
 const stageLabelEl = document.getElementById('sales-stage-label');
 const merchProductsContainer = document.getElementById('sales-merch-products');
 const merchCartList = document.getElementById('merch-cart-list');
@@ -30,6 +41,15 @@ const merchStatusEl = document.getElementById('merch-status');
 const btnSubmitMerchOrder = document.getElementById('btn-submit-merch-order');
 const btnRefreshMerchSales = document.getElementById('btn-refresh-merch-sales');
 const merchNoteInput = document.getElementById('input-merch-note');
+const merchFulfillmentSelect = document.getElementById('merch-fulfillment-type');
+const merchPresalePanel = document.getElementById('merch-presale-panel');
+const inputPresaleCode = document.getElementById('input-presale-code');
+const btnScanPresaleCode = document.getElementById('btn-scan-presale-code');
+const inputRedeemCode = document.getElementById('input-redeem-code');
+const btnScanRedeemCode = document.getElementById('btn-scan-redeem-code');
+const btnLookupVoucher = document.getElementById('btn-lookup-voucher');
+const btnRedeemVoucher = document.getElementById('btn-redeem-voucher');
+const redeemVoucherInfo = document.getElementById('redeem-voucher-info');
 const MERCH_PAYMENT_OPTIONS = [
   '现金（人民币）',
   '微信',
@@ -47,10 +67,16 @@ const checkinCanvas = document.getElementById('checkin-canvas');
 const checkinSeatGrid = document.getElementById('checkin-seat-grid');
 const checkinResultEl = document.getElementById('checkin-result');
 const checkinStatsEl = document.getElementById('checkin-stats');
+const checkinHttpsHelp = document.getElementById('checkin-https-help');
+const checkinHttpsUrlEl = document.getElementById('checkin-https-url');
+const btnCopyCheckinHttps = document.getElementById('btn-copy-checkin-https');
+const btnOpenCheckinHttps = document.getElementById('btn-open-checkin-https');
 const btnStartCheckin = document.getElementById('btn-start-checkin');
 const btnStopCheckin = document.getElementById('btn-stop-checkin');
 const btnSubmitCheckin = document.getElementById('btn-submit-checkin');
 const inputCheckinCode = document.getElementById('input-checkin-code');
+const checkinUploadFile = document.getElementById('checkin-upload-file');
+const btnCheckinUploadScan = document.getElementById('btn-checkin-upload-scan');
 const btnRefreshCheckin = document.getElementById('btn-refresh-checkin');
 const pendingCheckinList = document.getElementById('pending-checkin-list');
 const btnRetryPending = document.getElementById('btn-retry-pending');
@@ -75,6 +101,28 @@ const PRICE_COLORS = [
 const PLACEHOLDER_IMAGE =
   'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%23f2f4f8" rx="16"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%2399a5c2" font-size="24">No Image</text></svg>';
 
+const IS_IOS_DEVICE = (() => {
+  const ua = navigator.userAgent || '';
+  const isAppleMobile = /iPad|iPhone|iPod/i.test(ua);
+  const isIPadOS = ua.includes('Mac') && 'ontouchend' in document;
+  return isAppleMobile || isIPadOS;
+})();
+
+const enableInlineVideoForIOS = (video) => {
+  if (!video || !IS_IOS_DEVICE) return;
+  try {
+    video.playsInline = true;
+  } catch {
+    // ignore
+  }
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+};
+
+enableInlineVideoForIOS(document.getElementById('scan-video'));
+enableInlineVideoForIOS(document.getElementById('checkin-video'));
+enableInlineVideoForIOS(document.getElementById('voucher-scan-video'));
+
 const socket = io({ withCredentials: true, transports: ['websocket', 'polling'] });
 const BARCODE_FORMATS = [
   'qr_code',
@@ -98,6 +146,7 @@ let pendingIssue = null;
 let videoStream = null;
 let barcodeDetector = null;
 let jsQrDetector = null;
+let zxingDetector = null;
 let scanContext = null;
 let scanningLoopActive = false;
 let lastScannedCode = '';
@@ -106,8 +155,36 @@ let lastScanMessage = '等待签发指令...';
 let detectFailCount = 0;
 let zoneSummaryData = [];
 let merchCatalog = [];
-let checkoutModes = [];
 let merchCart = [];
+let checkoutModes = [];
+let voucherScanTarget = null;
+let voucherScanMode = null;
+let activeTicketCoupon = null;
+let merchOrderRetry = null;
+
+const voucherScanDialog = document.getElementById('dialog-voucher-scan');
+const voucherScanTitle = document.getElementById('voucher-scan-title');
+const voucherScanHint = document.getElementById('voucher-scan-hint');
+const voucherScanVideo = document.getElementById('voucher-scan-video');
+const voucherScanOverlay = document.getElementById('voucher-scan-overlay');
+const voucherScanCanvas = document.getElementById('voucher-scan-canvas');
+const voucherScanUploadFile = document.getElementById('voucher-scan-upload-file');
+const voucherScanManual = document.getElementById('voucher-scan-manual');
+const btnVoucherScanStart = document.getElementById('btn-voucher-scan-start');
+const btnVoucherScanStop = document.getElementById('btn-voucher-scan-stop');
+const btnVoucherUploadScan = document.getElementById('btn-voucher-upload-scan');
+const btnVoucherUse = document.getElementById('btn-voucher-use');
+const btnVoucherClose = document.getElementById('btn-voucher-close');
+const issueScanMethods = document.getElementById('issue-scan-methods');
+const checkinScanMethods = document.getElementById('checkin-scan-methods');
+const voucherScanMethods = document.getElementById('voucher-scan-methods');
+
+let voucherScanStream = null;
+let voucherScanDetector = null;
+let voucherScanCtx = null;
+let voucherScanLoopActive = false;
+let lastVoucherScanCode = '';
+let lastVoucherScanTime = 0;
 let checkinStats = { totalSold: 0, checkedIn: 0 };
 let checkinDetector = null;
 let checkinContext = null;
@@ -117,7 +194,44 @@ let lastCheckinCode = '';
 let lastCheckinTime = 0;
 let pendingCheckins = [];
 let jsQrCheckinDetector = null;
+let zxingCheckinDetector = null;
 let checkinDetectFailCount = 0;
+let seatLockQueue = null;
+let isRevertingProjectSelect = false;
+let issueScanPreference = 'camera';
+let checkinScanPreference = 'camera';
+let voucherScanPreference = 'camera';
+let issueCameraLastError = '';
+let checkinCameraLastError = '';
+let voucherCameraLastError = '';
+
+const createZxingCanvasDetector = () => {
+  if (!window.ZXingBrowser || !window.ZXingBrowser.BrowserMultiFormatReader) return null;
+  const reader = new window.ZXingBrowser.BrowserMultiFormatReader();
+  let lastAttemptAt = 0;
+  return {
+    detect: async (canvas) => {
+      const now = Date.now();
+      // ZXing 解码较重，限制尝试频率，避免占满 CPU
+      if (now - lastAttemptAt < 250) return [];
+      lastAttemptAt = now;
+      try {
+        const result = await reader.decodeFromCanvas(canvas);
+        const raw = (result?.getText?.() || result?.text || '').trim();
+        return raw ? [{ rawValue: raw }] : [];
+      } catch {
+        return [];
+      }
+    },
+    reset: () => {
+      try {
+        if (typeof reader.reset === 'function') reader.reset();
+      } catch {
+        // ignore
+      }
+    },
+  };
+};
 
 if (btnClearSelected) {
   btnClearSelected.disabled = true;
@@ -183,9 +297,17 @@ const stopIssueScanner = () => {
     videoStream.getTracks().forEach((t) => t.stop());
     videoStream = null;
   }
+  if (barcodeDetector && typeof barcodeDetector.reset === 'function') {
+    try {
+      barcodeDetector.reset();
+    } catch {
+      // ignore
+    }
+  }
   barcodeDetector = null;
   scanContext = null;
   showScanOverlayMessage('等待签发指令...', { visible: true });
+  renderScanMethodsPanels();
 };
 
 const switchModule = (name) => {
@@ -201,6 +323,7 @@ const switchModule = (name) => {
     tab.classList.toggle('sales-tab--active', active);
     tab.classList.toggle('admin-tab--active', active);
     tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    tab.setAttribute('tabindex', active ? '0' : '-1');
   });
   if (name === 'checkin') {
     refreshActiveProject();
@@ -243,18 +366,576 @@ const emitAsync = (event, payload) =>
     socket.emit(event, payload, (response = {}) => resolve(response));
   });
 
-const showStatus = (message, isError = false) => {
-  salesStatus.textContent = message || '';
-  salesStatus.style.color = isError ? '#e14949' : '#1f76d0';
+let salesStatusActions = new Map();
+let merchStatusActions = new Map();
+let checkinResultActions = new Map();
+let actionSeq = 0;
+
+const renderActionButtons = (container, actions = [], store) => {
+  if (!container) return;
+  if (!Array.isArray(actions) || !actions.length) return;
+  const wrap = document.createElement('span');
+  wrap.className = 'status-actions';
+  actions.forEach((action) => {
+    if (!action || typeof action.onClick !== 'function') return;
+    const id = `a${(actionSeq += 1)}`;
+    store.set(id, action.onClick);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `button button--sm ${action.variant ? `button--${action.variant}` : 'button--secondary'}`;
+    btn.dataset.actionId = id;
+    btn.textContent = action.label || '操作';
+    wrap.appendChild(btn);
+  });
+  if (!wrap.childNodes.length) return;
+  container.appendChild(wrap);
 };
+
+const showStatus = (message, isError = false, actions = []) => {
+  if (!salesStatus) return;
+  salesStatusActions = new Map();
+  salesStatus.textContent = '';
+  salesStatus.classList.toggle('status--error', isError);
+  salesStatus.classList.toggle('status--ok', !isError);
+  if (message) {
+    const span = document.createElement('span');
+    span.textContent = message;
+    salesStatus.appendChild(span);
+  }
+  renderActionButtons(salesStatus, actions, salesStatusActions);
+};
+
+if (salesStatus) {
+  salesStatus.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-action-id]');
+    if (!btn) return;
+    const handler = salesStatusActions.get(btn.dataset.actionId);
+    if (handler) handler();
+  });
+}
+
+const getSuggestedHttpsUrl = () => {
+  try {
+    const url = new URL(window.location.href);
+    url.protocol = 'https:';
+    return url.toString();
+  } catch {
+    return `https://${location.host}${location.pathname}${location.search}${location.hash}`;
+  }
+};
+
+const suggestedHttpsUrl = getSuggestedHttpsUrl();
+
+const shouldShowHttpsHelp = () => !window.isSecureContext;
+
+const renderHttpsHelpPanels = () => {
+  const show = shouldShowHttpsHelp();
+  if (issueHttpsHelp) issueHttpsHelp.hidden = !show;
+  if (checkinHttpsHelp) checkinHttpsHelp.hidden = !show;
+  if (issueHttpsUrlEl) issueHttpsUrlEl.textContent = suggestedHttpsUrl;
+  if (checkinHttpsUrlEl) checkinHttpsUrlEl.textContent = suggestedHttpsUrl;
+  renderScanMethodsPanels();
+};
+
+const getCameraCapability = (lastError = '') => {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    return { ok: false, reason: '设备不支持摄像头调用' };
+  }
+  if (!window.isSecureContext) {
+    return { ok: false, reason: '需要 HTTPS（或 localhost/127.0.0.1）才能调用摄像头', needsHttps: true };
+  }
+  if (lastError) {
+    return { ok: false, reason: lastError };
+  }
+  return { ok: true, reason: '可用' };
+};
+
+const buildScanMethodsHtml = ({ title, cameraCap, running, preference }) => {
+  const cameraBadgeClass = cameraCap.ok ? 'scan-badge--ok' : cameraCap.needsHttps ? 'scan-badge--warn' : 'scan-badge--error';
+  const cameraBadgeText = cameraCap.ok ? `摄像头：${running ? '运行中' : '可用'}` : `摄像头：不可用`;
+  const uploadBadgeClass = 'scan-badge--ok';
+  const manualBadgeClass = 'scan-badge--ok';
+  const hint = cameraCap.ok
+    ? '可使用摄像头扫码，也可随时切换到上传图片或手动输入。'
+    : cameraCap.reason || '摄像头暂不可用，可改用上传图片或手动输入。';
+  const active = preference === 'upload' ? '当前：上传图片' : preference === 'manual' ? '当前：手动输入' : '当前：摄像头扫码';
+  return `
+    <div class="scan-methods__row">
+      <div>
+        <div class="scan-methods__title">${title}</div>
+        <div class="scan-methods__hint">${active} · ${hint}</div>
+      </div>
+      <div class="scan-badges" aria-label="可用方式">
+        <span class="scan-badge ${cameraBadgeClass}">${cameraBadgeText}</span>
+        <span class="scan-badge ${uploadBadgeClass}">上传图片：可用</span>
+        <span class="scan-badge ${manualBadgeClass}">手动输入：可用</span>
+      </div>
+    </div>
+    <div class="scan-methods__row">
+      <div class="scan-methods__actions">
+        <button type="button" class="button button--sm button--secondary" data-scan-action="camera" ${cameraCap.ok ? '' : 'disabled'}>
+          使用摄像头
+        </button>
+        <button type="button" class="button button--sm button--secondary" data-scan-action="upload">上传图片</button>
+        <button type="button" class="button button--sm button--secondary" data-scan-action="manual">手动输入</button>
+        ${
+          cameraCap.needsHttps
+            ? `<button type="button" class="button button--sm" data-scan-action="copy-https">复制 HTTPS 链接</button>
+               <button type="button" class="button button--sm button--primary" data-scan-action="open-https">打开 HTTPS</button>`
+            : ''
+        }
+      </div>
+    </div>
+  `;
+};
+
+const renderScanMethodsPanels = () => {
+  const issueCap = getCameraCapability(issueCameraLastError);
+  const checkinCap = getCameraCapability(checkinCameraLastError);
+  const voucherCap = getCameraCapability(voucherCameraLastError);
+  if (issueScanMethods) {
+    issueScanMethods.innerHTML = buildScanMethodsHtml({
+      title: '扫码方式（签发）',
+      cameraCap: issueCap,
+      running: Boolean(scanningLoopActive),
+      preference: issueScanPreference,
+    });
+  }
+  if (checkinScanMethods) {
+    checkinScanMethods.innerHTML = buildScanMethodsHtml({
+      title: '扫码方式（检票）',
+      cameraCap: checkinCap,
+      running: Boolean(checkinLoopActive),
+      preference: checkinScanPreference,
+    });
+  }
+  if (voucherScanMethods) {
+    voucherScanMethods.innerHTML = buildScanMethodsHtml({
+      title: '扫码方式（券码）',
+      cameraCap: voucherCap,
+      running: Boolean(voucherScanLoopActive),
+      preference: voucherScanPreference,
+    });
+  }
+};
+
+const handleScanMethodAction = async (scope, action) => {
+  if (!action) return;
+  if (action === 'copy-https') {
+    await copyTextToClipboard(suggestedHttpsUrl);
+    return;
+  }
+  if (action === 'open-https') {
+    openSuggestedHttps();
+    return;
+  }
+
+  if (scope === 'issue') {
+    if (action === 'camera') {
+      issueScanPreference = 'camera';
+      issueCameraLastError = '';
+      await ensureScanner();
+      renderHttpsHelpPanels();
+      renderScanMethodsPanels();
+      return;
+    }
+    if (action === 'upload') {
+      issueScanPreference = 'upload';
+      if (issueUploadFile) issueUploadFile.click();
+      renderScanMethodsPanels();
+      return;
+    }
+    if (action === 'manual') {
+      issueScanPreference = 'manual';
+      if (manualCodeInput) manualCodeInput.focus();
+      renderScanMethodsPanels();
+      return;
+    }
+  }
+
+  if (scope === 'checkin') {
+    if (action === 'camera') {
+      checkinScanPreference = 'camera';
+      checkinCameraLastError = '';
+      await startCheckinScanner();
+      renderHttpsHelpPanels();
+      renderScanMethodsPanels();
+      return;
+    }
+    if (action === 'upload') {
+      checkinScanPreference = 'upload';
+      if (checkinUploadFile) checkinUploadFile.click();
+      renderScanMethodsPanels();
+      return;
+    }
+    if (action === 'manual') {
+      checkinScanPreference = 'manual';
+      if (inputCheckinCode) inputCheckinCode.focus();
+      renderScanMethodsPanels();
+      return;
+    }
+  }
+
+  if (scope === 'voucher') {
+    if (action === 'camera') {
+      voucherScanPreference = 'camera';
+      voucherCameraLastError = '';
+      await startVoucherScan();
+      renderScanMethodsPanels();
+      return;
+    }
+    if (action === 'upload') {
+      voucherScanPreference = 'upload';
+      if (voucherScanUploadFile) voucherScanUploadFile.click();
+      renderScanMethodsPanels();
+      return;
+    }
+    if (action === 'manual') {
+      voucherScanPreference = 'manual';
+      if (voucherScanManual) voucherScanManual.focus();
+      renderScanMethodsPanels();
+      return;
+    }
+  }
+};
+
+if (issueScanMethods) {
+  issueScanMethods.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-scan-action]');
+    if (!btn) return;
+    handleScanMethodAction('issue', btn.dataset.scanAction);
+  });
+}
+if (checkinScanMethods) {
+  checkinScanMethods.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-scan-action]');
+    if (!btn) return;
+    handleScanMethodAction('checkin', btn.dataset.scanAction);
+  });
+}
+if (voucherScanMethods) {
+  voucherScanMethods.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-scan-action]');
+    if (!btn) return;
+    handleScanMethodAction('voucher', btn.dataset.scanAction);
+  });
+}
+
+const copyTextToClipboard = async (text) => {
+  if (!text) return;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      showStatus('已复制链接到剪贴板。');
+      return;
+    }
+  } catch {
+    // ignore and fallback
+  }
+  window.prompt('复制以下链接：', text);
+  showStatus('已显示链接，请手动复制。');
+};
+
+const openSuggestedHttps = () => {
+  if (!suggestedHttpsUrl) return;
+  window.location.href = suggestedHttpsUrl;
+};
+
+if (btnCopyIssueHttps) {
+  btnCopyIssueHttps.addEventListener('click', () => copyTextToClipboard(suggestedHttpsUrl));
+}
+if (btnOpenIssueHttps) {
+  btnOpenIssueHttps.addEventListener('click', openSuggestedHttps);
+}
+if (btnCopyCheckinHttps) {
+  btnCopyCheckinHttps.addEventListener('click', () => copyTextToClipboard(suggestedHttpsUrl));
+}
+if (btnOpenCheckinHttps) {
+  btnOpenCheckinHttps.addEventListener('click', openSuggestedHttps);
+}
+renderHttpsHelpPanels();
 
 const setMerchStatus = (message, isError = false) => {
   if (!merchStatusEl) return;
-  merchStatusEl.textContent = message || '';
-  merchStatusEl.style.color = isError ? '#e14949' : '#1f76d0';
+  const actions = arguments.length > 2 ? arguments[2] : [];
+  merchStatusActions = new Map();
+  merchStatusEl.textContent = '';
+  merchStatusEl.classList.toggle('status--error', isError);
+  merchStatusEl.classList.toggle('status--ok', !isError);
+  if (message) {
+    const span = document.createElement('span');
+    span.textContent = message;
+    merchStatusEl.appendChild(span);
+  }
+  renderActionButtons(merchStatusEl, actions, merchStatusActions);
+};
+
+if (merchStatusEl) {
+  merchStatusEl.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-action-id]');
+    if (!btn) return;
+    const handler = merchStatusActions.get(btn.dataset.actionId);
+    if (handler) handler();
+  });
+}
+
+const setRedeemInfo = (message, isError = false) => {
+  if (!redeemVoucherInfo) return;
+  redeemVoucherInfo.textContent = message || '';
+  redeemVoucherInfo.style.color = isError ? '#e14949' : '#637591';
+};
+
+const setTicketCouponInfo = (message, isError = false) => {
+  if (!ticketCouponInfo) return;
+  ticketCouponInfo.textContent = message || '';
+  ticketCouponInfo.style.color = isError ? '#e14949' : '#637591';
+};
+
+const renderTicketCoupon = (coupon, rule) => {
+  activeTicketCoupon = coupon || null;
+  if (!coupon) {
+    setTicketCouponInfo('未使用优惠券。');
+    return;
+  }
+  const lines = [];
+  lines.push(`优惠券：${coupon.code}`);
+  lines.push(`状态：${coupon.status || '-'}`);
+  lines.push(`剩余张数：${coupon.remaining ?? '-'}`);
+  if (rule?.name) lines.push(`规则：${rule.name}`);
+  if (coupon.discountRate != null) lines.push(`折扣：${coupon.discountRate} 折`);
+  if (coupon.allowedPrices && Array.isArray(coupon.allowedPrices) && coupon.allowedPrices.length) {
+    lines.push(`限制票价：${coupon.allowedPrices.join(' / ')}`);
+  }
+  setTicketCouponInfo(lines.join('\n'));
+};
+
+const lookupTicketCoupon = async () => {
+  if (!activeProject) {
+    setTicketCouponInfo('请先选择项目。', true);
+    return;
+  }
+  const code = (inputTicketCoupon?.value || '').trim();
+  if (!code) {
+    setTicketCouponInfo('请输入优惠券码。', true);
+    return;
+  }
+  setTicketCouponInfo('正在查询...');
+  try {
+    const resp = await authFetch(
+      `/api/projects/${encodeURIComponent(activeProject.id)}/ticket-coupons/${encodeURIComponent(code)}?ts=${Date.now()}`
+    );
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || '查询失败');
+    renderTicketCoupon(data.coupon, data.rule);
+  } catch (error) {
+    renderTicketCoupon(null, null);
+    setTicketCouponInfo(error.message || '查询失败', true);
+  }
+};
+
+const clearTicketCoupon = () => {
+  if (inputTicketCoupon) inputTicketCoupon.value = '';
+  renderTicketCoupon(null, null);
+};
+
+const setVoucherOverlay = (message) => {
+  if (!voucherScanOverlay) return;
+  voucherScanOverlay.textContent = message || '';
+};
+
+const closeVoucherDialog = () => {
+  try {
+    if (voucherScanDialog && voucherScanDialog.open) voucherScanDialog.close();
+  } catch {
+    // ignore
+  }
+};
+
+const stopVoucherScan = () => {
+  voucherScanLoopActive = false;
+  if (voucherScanDetector && typeof voucherScanDetector.reset === 'function') {
+    try {
+      voucherScanDetector.reset();
+    } catch {
+      // ignore
+    }
+  }
+  voucherScanDetector = null;
+  voucherScanCtx = null;
+  if (voucherScanStream) {
+    voucherScanStream.getTracks().forEach((t) => t.stop());
+    voucherScanStream = null;
+  }
+  setVoucherOverlay('已停止扫码');
+  renderScanMethodsPanels();
+};
+
+const applyVoucherCode = (code) => {
+  const normalized = (code || '').trim();
+  if (!normalized) return;
+  if (voucherScanTarget) {
+    voucherScanTarget.value = normalized;
+    voucherScanTarget.dispatchEvent(new Event('input'));
+    voucherScanTarget.dispatchEvent(new Event('change'));
+  }
+  setVoucherOverlay(`已识别：${normalized}`);
+  stopVoucherScan();
+  closeVoucherDialog();
+  if (voucherScanMode === 'redeem') {
+    setRedeemInfo('已填入预购券码，可点击“查询”。');
+  } else if (voucherScanMode === 'presale') {
+    setMerchStatus('已填入预购券码，可继续提交预售订单。');
+  }
+};
+
+const runVoucherScanLoop = async () => {
+  if (!voucherScanLoopActive) return;
+  try {
+    if (voucherScanDetector && voucherScanCtx && voucherScanVideo && voucherScanVideo.readyState >= 2) {
+      voucherScanCtx.drawImage(voucherScanVideo, 0, 0, voucherScanCanvas.width, voucherScanCanvas.height);
+      const codes = await voucherScanDetector.detect(voucherScanCanvas);
+      if (codes.length) {
+        const raw = (codes[0].rawValue || '').trim();
+        const now = Date.now();
+        if (raw && (raw !== lastVoucherScanCode || now - lastVoucherScanTime > 1500)) {
+          lastVoucherScanCode = raw;
+          lastVoucherScanTime = now;
+          applyVoucherCode(raw);
+          return;
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  requestAnimationFrame(runVoucherScanLoop);
+};
+
+const startVoucherScan = async () => {
+  if (!voucherScanVideo || !voucherScanCanvas) return;
+  if (!navigator.mediaDevices) {
+    setVoucherOverlay('设备不支持摄像头，请使用上传图片或手动输入。');
+    voucherCameraLastError = '设备不支持摄像头调用';
+    renderScanMethodsPanels();
+    return;
+  }
+  renderHttpsHelpPanels();
+  if (!window.isSecureContext) {
+    setVoucherOverlay('摄像头扫码需要 HTTPS（或 localhost）。可使用上传图片或手动输入。');
+    voucherCameraLastError = '需要 HTTPS（或 localhost/127.0.0.1）才能调用摄像头';
+    renderScanMethodsPanels();
+    return;
+  }
+  try {
+    if (!voucherScanVideo.hasAttribute('playsinline')) voucherScanVideo.setAttribute('playsinline', 'true');
+    voucherScanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    voucherScanVideo.srcObject = voucherScanStream;
+  } catch (error) {
+    const reason =
+      error && error.name === 'NotAllowedError'
+        ? '摄像头权限被拒绝，请允许权限或改用上传图片/手动输入。'
+        : '无法访问摄像头，请检查权限或改用上传图片/手动输入。';
+    setVoucherOverlay(reason);
+    voucherCameraLastError = reason;
+    renderScanMethodsPanels();
+    return;
+  }
+  voucherCameraLastError = '';
+  renderScanMethodsPanels();
+  if (!('BarcodeDetector' in window)) {
+    const detector = createZxingCanvasDetector();
+    if (!detector) {
+      setVoucherOverlay('浏览器不支持实时扫码，请使用上传图片或手动输入。');
+      return;
+    }
+    voucherScanDetector = detector;
+    voucherScanCanvas.width = 640;
+    voucherScanCanvas.height = 360;
+    voucherScanCtx = voucherScanCanvas.getContext('2d');
+    voucherScanLoopActive = true;
+    setVoucherOverlay('已切换到软件识别模式（ZXing），请对准条码/二维码。');
+    runVoucherScanLoop();
+    return;
+  }
+  try {
+    try {
+      voucherScanDetector = new window.BarcodeDetector({ formats: BARCODE_FORMATS });
+    } catch {
+      voucherScanDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+    }
+    voucherScanCanvas.width = 640;
+    voucherScanCanvas.height = 360;
+    voucherScanCtx = voucherScanCanvas.getContext('2d');
+    voucherScanLoopActive = true;
+    setVoucherOverlay('摄像头已就绪，请对准条码。');
+    runVoucherScanLoop();
+  } catch {
+    const detector = createZxingCanvasDetector();
+    if (!detector) {
+      setVoucherOverlay('初始化扫码失败，请使用上传图片或手动输入。');
+      return;
+    }
+    voucherScanDetector = detector;
+    voucherScanCanvas.width = 640;
+    voucherScanCanvas.height = 360;
+    voucherScanCtx = voucherScanCanvas.getContext('2d');
+    voucherScanLoopActive = true;
+    setVoucherOverlay('已切换到软件识别模式（ZXing），请对准条码/二维码。');
+    runVoucherScanLoop();
+  }
+};
+
+const openVoucherDialog = ({ title, targetInput, mode }) => {
+  voucherScanTarget = targetInput || null;
+  voucherScanMode = mode || null;
+  if (voucherScanTitle) voucherScanTitle.textContent = title || '扫码';
+  if (voucherScanHint) {
+    voucherScanHint.textContent =
+      '可使用摄像头扫码（需 HTTPS），或上传条码图片/手动输入。';
+  }
+  if (voucherScanManual) voucherScanManual.value = '';
+  if (voucherScanUploadFile) voucherScanUploadFile.value = '';
+  stopVoucherScan();
+  setVoucherOverlay('等待扫码...');
+  voucherCameraLastError = '';
+  voucherScanPreference = 'camera';
+  renderScanMethodsPanels();
+  try {
+    if (voucherScanDialog) voucherScanDialog.showModal();
+  } catch {
+    // ignore
+  }
+  if (voucherScanManual) voucherScanManual.focus();
 };
 
 const formatCurrency = (value) => `¥${Number(value || 0).toFixed(2)}`;
+
+const formatDurationSeconds = (ms) => {
+  const seconds = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+  return seconds;
+};
+
+const describeLockOwner = (lockedBy) => {
+  if (!lockedBy) return '其他终端';
+  if (typeof lockedBy === 'string') return lockedBy;
+  return lockedBy.username || lockedBy.socketId || '其他终端';
+};
+
+const ensureSeatLockQueue = () => {
+  if (!seatLockQueue) seatLockQueue = new Map();
+  return seatLockQueue;
+};
+
+const clearSeatLockQueue = () => {
+  if (!seatLockQueue) return;
+  for (const pending of seatLockQueue.values()) {
+    if (pending?.timer) clearTimeout(pending.timer);
+  }
+  seatLockQueue.clear();
+};
 
 socket.on('connect', () => {
   showStatus('');
@@ -288,6 +969,7 @@ const showScanOverlayMessage = (message, { visible = true } = {}) => {
 showScanOverlayMessage(lastScanMessage, { visible: true });
 
 const resetSeatCanvas = (message = '等待选择项目...') => {
+  clearSeatLockQueue();
   seatCanvas.innerHTML = '';
   seatGridElement = null;
   seatGridSignature = null;
@@ -397,9 +1079,18 @@ const applyCheckoutModeToTotal = (totalBefore) => {
 
 const setCheckinResult = (message, status = null, detail = null) => {
   if (!checkinResultEl) return;
-  checkinResultEl.textContent = message || '';
-  checkinResultEl.classList.remove('checkin-result--success', 'checkin-result--error');
-  if (status === 'success') {
+  const actions = arguments.length > 3 ? arguments[3] : [];
+  checkinResultActions = new Map();
+  checkinResultEl.textContent = '';
+  if (message) {
+    const line = document.createElement('div');
+    line.textContent = message;
+    checkinResultEl.appendChild(line);
+  }
+  checkinResultEl.classList.remove('checkin-result--notice', 'checkin-result--success', 'checkin-result--error');
+  if (status === 'notice') {
+    checkinResultEl.classList.add('checkin-result--notice');
+  } else if (status === 'success') {
     checkinResultEl.classList.add('checkin-result--success');
   } else if (status === 'error') {
     checkinResultEl.classList.add('checkin-result--error');
@@ -410,7 +1101,17 @@ const setCheckinResult = (message, status = null, detail = null) => {
     extra.textContent = detail;
     checkinResultEl.appendChild(extra);
   }
+  renderActionButtons(checkinResultEl, actions, checkinResultActions);
 };
+
+if (checkinResultEl) {
+  checkinResultEl.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-action-id]');
+    if (!btn) return;
+    const handler = checkinResultActions.get(btn.dataset.actionId);
+    if (handler) handler();
+  });
+}
 
 const updateCheckinStats = () => {
   if (!checkinStatsEl) return;
@@ -586,6 +1287,97 @@ const populatePaymentOptions = () => {
   merchPaymentSelect.value = MERCH_PAYMENT_OPTIONS.includes(prev) ? prev : MERCH_PAYMENT_OPTIONS[0];
 };
 
+const renderMerchModes = () => {
+  populateCheckoutModes();
+  populatePaymentOptions();
+};
+
+const cancelMerchOrderRetry = () => {
+  if (!merchOrderRetry) return;
+  if (merchOrderRetry.timer) clearTimeout(merchOrderRetry.timer);
+  merchOrderRetry = null;
+  if (btnSubmitMerchOrder) btnSubmitMerchOrder.disabled = false;
+  setMerchStatus('已取消排队等待。');
+};
+
+const scheduleMerchOrderRetry = (payload, reason = '') => {
+  const attempt = (merchOrderRetry?.attempt || 0) + 1;
+  cancelMerchOrderRetry();
+  const base = Math.min(8000, 800 * 2 ** Math.min(4, attempt - 1));
+  const jitter = Math.floor(Math.random() * 400);
+  const delay = base + jitter;
+  const seconds = Math.max(1, Math.round(delay / 1000));
+  if (btnSubmitMerchOrder) btnSubmitMerchOrder.disabled = true;
+  const prefix = reason ? `${reason}；` : '';
+  setMerchStatus(`${prefix}${seconds}s 后自动重试提交（已排队）。`, true, [
+    { label: '立即重试', variant: 'primary', onClick: () => submitMerchOrder(payload, true) },
+    { label: '取消排队', variant: 'secondary', onClick: cancelMerchOrderRetry },
+  ]);
+  const timer = setTimeout(() => submitMerchOrder(payload, true), delay);
+  merchOrderRetry = { timer, payload, attempt };
+};
+
+const submitMerchOrder = async (payload, isRetry = false) => {
+  if (!payload) return;
+  if (!isRetry) cancelMerchOrderRetry();
+  setMerchStatus(payload.orderType === 'presale' ? '正在签发预购券...' : '正在提交订单...');
+  try {
+    const response = await authFetch('/api/merch/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      if (response.status === 409 && error?.code === 'VOUCHER_EXISTS') {
+        cancelMerchOrderRetry();
+        setMerchStatus('该预购券已使用/已签发，请更换预购券。', true);
+        return;
+      }
+      if (response.status === 400 && error?.code === 'VOUCHER_REQUIRED') {
+        cancelMerchOrderRetry();
+        setMerchStatus('预售订单需要预购券条码。', true);
+        return;
+      }
+      if (response.status === 409 && error?.code === 'OUT_OF_STOCK') {
+        cancelMerchOrderRetry();
+        const shortages = Array.isArray(error.shortages) ? error.shortages : [];
+        const detail = shortages.length
+          ? shortages
+              .slice(0, 5)
+              .map((s) => `${s.name}（需 ${s.requested}，余 ${s.stock}）`)
+              .join('；')
+          : '';
+        setMerchStatus(`库存不足：${detail || '请刷新商品后重试'}。正在自动刷新库存...`, true);
+        await fetchMerchData();
+        syncCartWithStock();
+        renderMerchCart();
+        return;
+      }
+      if (response.status === 429 && (error?.code === 'BUSY' || error?.code === 'TOO_BUSY')) {
+        scheduleMerchOrderRetry(payload);
+        return;
+      }
+      cancelMerchOrderRetry();
+      throw new Error(error?.error || '提交失败');
+    }
+    cancelMerchOrderRetry();
+    const data = await response.json().catch(() => ({}));
+    if (payload.orderType === 'presale') {
+      setMerchStatus(`预购券已签发：${data.voucher?.code || payload.voucherCode || ''}`);
+    } else {
+      setMerchStatus('已记录文创订单。');
+    }
+    merchCart = [];
+    renderMerchCart();
+    if (merchNoteInput) merchNoteInput.value = '';
+    if (inputPresaleCode) inputPresaleCode.value = '';
+    await fetchMerchData();
+  } catch (error) {
+    scheduleMerchOrderRetry(payload, error.message || '提交失败');
+  }
+};
+
 const submitCheckin = async (code) => {
   if (!activeProject) {
     setCheckinResult('请先选择项目。', 'error');
@@ -608,9 +1400,38 @@ const submitCheckin = async (code) => {
       const seatInfo = data.seat
         ? `座位：${data.seat.seatLabel || ''}；状态：${data.seat.status || ''}`
         : '';
-      setCheckinResult(data.error || '检票失败', 'error', seatInfo);
+      if (response.status === 409 && data.error === '已检票') {
+        const when = data.checkedInAt ? new Date(data.checkedInAt).toLocaleString() : '未知时间';
+        const who = data.checkedInBy ? `，检票员：${data.checkedInBy}` : '';
+        setCheckinResult(`该票已入场（${when}${who}）`, 'notice', seatInfo, [
+          { label: '刷新统计', variant: 'secondary', onClick: () => refreshActiveProject() },
+        ]);
+        playBeep(false);
+        return;
+      }
+      const errorMessage = data.error || '检票失败';
+      const actions = [];
+      if (response.status === 429 || data.code === 'BUSY') {
+        actions.push({
+          label: '立即重试',
+          variant: 'primary',
+          onClick: () => submitCheckin(ticketCode),
+        });
+      }
+      actions.push({
+        label: '加入待重试',
+        variant: 'secondary',
+        onClick: async () => {
+          await addPendingCheckin(ticketCode, errorMessage);
+          setCheckinResult('已加入待重试列表。', 'notice');
+        },
+      });
+      setCheckinResult(errorMessage, 'error', seatInfo, actions);
       playBeep(false);
-      await addPendingCheckin(ticketCode, data.error || '检票失败');
+      // 仅对“可重试”的失败加入待重试列表
+      if (response.status !== 409) {
+        await addPendingCheckin(ticketCode, data.error || '检票失败');
+      }
       return;
     }
     if (data.seat) {
@@ -631,7 +1452,17 @@ const submitCheckin = async (code) => {
     playBeep(true);
     if (inputCheckinCode) inputCheckinCode.value = '';
   } catch (error) {
-    setCheckinResult(error.message || '检票失败', 'error');
+    setCheckinResult(error.message || '检票失败', 'error', null, [
+      { label: '立即重试', variant: 'primary', onClick: () => submitCheckin(ticketCode) },
+      {
+        label: '加入待重试',
+        variant: 'secondary',
+        onClick: async () => {
+          await addPendingCheckin(ticketCode, error.message || '检票失败');
+          setCheckinResult('已加入待重试列表。', 'notice');
+        },
+      },
+    ]);
     await addPendingCheckin(ticketCode, error.message || '检票失败');
     playBeep(false);
   }
@@ -827,7 +1658,7 @@ const updateSeatElement = (seatId) => {
       button.classList.add('seat--locked');
     } else {
       button.classList.add('seat--held');
-      disable = true;
+      disable = false;
     }
   } else {
     button.classList.add('seat--available');
@@ -859,15 +1690,170 @@ const handleSeatGridClick = (event) => {
   const seatId = button.dataset.seatId;
   const currentSeat = activeProject.seats[seatId];
   if (!currentSeat) return;
+
+  const queue = ensureSeatLockQueue();
+  const lockSeatOnce = () =>
+    new Promise((resolve) => {
+      socket.emit('lock-seat', { projectId: activeProject.id, seatId }, (resp) => resolve(resp || {}));
+    });
+
+  const cancelQueue = () => {
+    const pending = queue.get(seatId);
+    if (!pending) return false;
+    clearTimeout(pending.timer);
+    queue.delete(seatId);
+    showStatus('已取消排队等待。');
+    return true;
+  };
+
+  const scheduleRetry = (retryAfterMs, lockedBy, lockExpiresAt) => {
+    cancelQueue();
+    const ownerName = describeLockOwner(lockedBy);
+    const seconds = formatDurationSeconds(retryAfterMs);
+    const displaySeconds = Math.min(999, seconds);
+    showStatus(
+      `座位被 ${ownerName} 占用，预计 ${displaySeconds}s 后可重试。已开启排队等待。`,
+      true,
+      [
+        {
+          label: '立即重试',
+          variant: 'primary',
+          onClick: async () => {
+            const resp = await lockSeatOnce();
+            if (!resp.ok) {
+              if (resp.code === 'LOCKED') {
+                const now = resp.serverTime || Date.now();
+                const ms = resp.retryAfterMs ?? Math.max(1000, (resp.lockExpiresAt || now) - now);
+                scheduleRetry(ms, resp.lockedBy, resp.lockExpiresAt);
+              } else {
+                showStatus(resp.message || '锁定失败', true);
+              }
+              return;
+            }
+            const seatRef = activeProject.seats[seatId];
+            if (seatRef) {
+              seatRef.status = 'locked';
+              seatRef.lockedBy = mySocketId;
+              seatRef.lockExpiresAt = resp.lockExpiresAt || Date.now() + 120000;
+              showStatus(`${formatSeatLabel(seatRef)} 已锁定，请在右侧签发。`);
+            } else {
+              showStatus('座位已锁定，请在右侧签发。');
+            }
+            updateSeatElement(seatId);
+            updateSelectedList();
+            updateProjectOptionStats();
+            updateZoneSummary();
+          },
+        },
+        {
+          label: '取消排队',
+          variant: 'secondary',
+          onClick: () => cancelQueue(),
+        },
+      ]
+    );
+    const delay = Math.min(Math.max(900, retryAfterMs || 1000), 10_000);
+    const timer = setTimeout(() => {
+      socket.emit('lock-seat', { projectId: activeProject.id, seatId }, (resp) => {
+        if (!resp.ok) {
+          if (resp.code === 'LOCKED') {
+            const now = resp.serverTime || Date.now();
+            const ms = resp.retryAfterMs ?? Math.max(1000, (resp.lockExpiresAt || now) - now);
+            scheduleRetry(ms, resp.lockedBy, resp.lockExpiresAt);
+          } else {
+            queue.delete(seatId);
+            showStatus(resp.message || '锁定失败', true, [
+              {
+                label: '重试',
+                variant: 'primary',
+                onClick: async () => {
+                  const retry = await lockSeatOnce();
+                  if (!retry.ok) {
+                    showStatus(retry.message || '锁定失败', true);
+                    return;
+                  }
+                  const seatRef = activeProject.seats[seatId];
+                  if (seatRef) {
+                    seatRef.status = 'locked';
+                    seatRef.lockedBy = mySocketId;
+                    seatRef.lockExpiresAt = retry.lockExpiresAt || Date.now() + 120000;
+                  }
+                  updateSeatElement(seatId);
+                  updateSelectedList();
+                  updateProjectOptionStats();
+                  updateZoneSummary();
+                  showStatus('座位已锁定，请在右侧签发。');
+                },
+              },
+            ]);
+          }
+          return;
+        }
+        queue.delete(seatId);
+        const seatRef = activeProject.seats[seatId];
+        if (seatRef) {
+          seatRef.status = 'locked';
+          seatRef.lockedBy = mySocketId;
+          seatRef.lockExpiresAt = resp.lockExpiresAt || Date.now() + 120000;
+          showStatus(`${formatSeatLabel(seatRef)} 已锁定，请在右侧签发。`);
+        } else {
+          showStatus('座位已锁定，请在右侧签发。');
+        }
+        updateSeatElement(seatId);
+        updateSelectedList();
+        updateProjectOptionStats();
+        updateZoneSummary();
+      });
+    }, delay);
+    queue.set(seatId, { timer, lockExpiresAt });
+  };
+
   if (currentSeat.status === 'available') {
+    if (cancelQueue()) return;
     socket.emit('lock-seat', { projectId: activeProject.id, seatId }, (resp) => {
       if (!resp.ok) {
-        showStatus(resp.message, true);
+        if (resp.code === 'LOCKED') {
+          const now = resp.serverTime || Date.now();
+          const retryAfterMs = resp.retryAfterMs ?? Math.max(1000, (resp.lockExpiresAt || now) - now);
+          scheduleRetry(retryAfterMs, resp.lockedBy, resp.lockExpiresAt);
+          return;
+        }
+        showStatus(resp.message || '锁定失败', true, [
+          {
+            label: '重试',
+            variant: 'primary',
+            onClick: async () => {
+              const retry = await lockSeatOnce();
+              if (!retry.ok) {
+                if (retry.code === 'LOCKED') {
+                  const now = retry.serverTime || Date.now();
+                  const ms = retry.retryAfterMs ?? Math.max(1000, (retry.lockExpiresAt || now) - now);
+                  scheduleRetry(ms, retry.lockedBy, retry.lockExpiresAt);
+                } else {
+                  showStatus(retry.message || '锁定失败', true);
+                }
+                return;
+              }
+              const seatRef = activeProject.seats[seatId];
+              if (seatRef) {
+                seatRef.status = 'locked';
+                seatRef.lockedBy = mySocketId;
+                seatRef.lockExpiresAt = retry.lockExpiresAt || seatRef.lockExpiresAt;
+              }
+              updateSeatElement(seatId);
+              updateSelectedList();
+              updateProjectOptionStats();
+              updateZoneSummary();
+              showStatus('座位已锁定，请在右侧签发。');
+            },
+          },
+        ]);
       } else {
         const seatRef = activeProject.seats[seatId];
         if (seatRef) {
           seatRef.status = 'locked';
           seatRef.lockedBy = mySocketId;
+          seatRef.lockExpiresAt = resp.lockExpiresAt || seatRef.lockExpiresAt;
           showStatus(`${formatSeatLabel(seatRef)} 已锁定，请在右侧签发。`);
         } else {
           showStatus('座位已锁定，请在右侧签发。');
@@ -882,12 +1868,19 @@ const handleSeatGridClick = (event) => {
     if (currentSeat.lockedBy === mySocketId) {
       socket.emit('unlock-seat', { projectId: activeProject.id, seatId }, (resp) => {
         if (!resp.ok) {
-          showStatus(resp.message, true);
+          showStatus(resp.message, true, [
+            {
+              label: '重试',
+              variant: 'primary',
+              onClick: () => handleSeatGridClick({ currentTarget: grid, target: button }),
+            },
+          ]);
         } else {
           const seatRef = activeProject.seats[seatId];
           if (seatRef) {
             seatRef.status = 'available';
             seatRef.lockedBy = null;
+            seatRef.lockExpiresAt = null;
             showStatus(`${formatSeatLabel(seatRef)} 已取消选中。`);
           } else {
             showStatus('已取消选中。');
@@ -902,7 +1895,61 @@ const handleSeatGridClick = (event) => {
         }
       });
     } else {
-      showStatus('该座位正在被其他终端选中。', true);
+      if (cancelQueue()) return;
+      socket.emit('lock-seat', { projectId: activeProject.id, seatId }, (resp) => {
+        if (!resp.ok) {
+          if (resp.code === 'LOCKED') {
+            const now = resp.serverTime || Date.now();
+            const retryAfterMs = resp.retryAfterMs ?? Math.max(1000, (resp.lockExpiresAt || now) - now);
+            scheduleRetry(retryAfterMs, resp.lockedBy, resp.lockExpiresAt);
+            return;
+          }
+          showStatus(resp.message || '锁定失败', true, [
+            {
+              label: '重试',
+              variant: 'primary',
+              onClick: async () => {
+                const retry = await lockSeatOnce();
+                if (!retry.ok) {
+                  if (retry.code === 'LOCKED') {
+                    const now = retry.serverTime || Date.now();
+                    const ms = retry.retryAfterMs ?? Math.max(1000, (retry.lockExpiresAt || now) - now);
+                    scheduleRetry(ms, retry.lockedBy, retry.lockExpiresAt);
+                  } else {
+                    showStatus(retry.message || '锁定失败', true);
+                  }
+                  return;
+                }
+                const seatRef = activeProject.seats[seatId];
+                if (seatRef) {
+                  seatRef.status = 'locked';
+                  seatRef.lockedBy = mySocketId;
+                  seatRef.lockExpiresAt = retry.lockExpiresAt || seatRef.lockExpiresAt;
+                }
+                updateSeatElement(seatId);
+                updateSelectedList();
+                updateProjectOptionStats();
+                updateZoneSummary();
+                showStatus('座位已锁定，请在右侧签发。');
+              },
+            },
+          ]);
+          return;
+        }
+        const seatRef = activeProject.seats[seatId];
+        if (seatRef) {
+          seatRef.status = 'locked';
+          seatRef.lockedBy = mySocketId;
+          seatRef.lockExpiresAt = resp.lockExpiresAt || seatRef.lockExpiresAt;
+          showStatus(`${formatSeatLabel(seatRef)} 已锁定，请在右侧签发。`);
+        } else {
+          showStatus('座位已锁定，请在右侧签发。');
+        }
+        updateSeatElement(seatId);
+        updateSelectedList();
+        updateProjectOptionStats();
+        updateZoneSummary();
+      });
     }
   } else if (currentSeat.status === 'sold') {
     showStatus('该座位已经签发。', true);
@@ -1103,7 +2150,7 @@ const updateSelectedList = () => {
   }
 };
 
-selectedList.addEventListener('click', (event) => {
+if (selectedList) selectedList.addEventListener('click', (event) => {
   const button = event.target.closest('button');
   if (!button) return;
   const action = button.dataset.action;
@@ -1126,6 +2173,7 @@ selectedList.addEventListener('click', (event) => {
 });
 
 const populateProjectSelect = () => {
+  if (!projectSelect) return;
   projectSelect.innerHTML = '';
   const placeholder = document.createElement('option');
   placeholder.value = '';
@@ -1178,6 +2226,72 @@ const joinProjectRoom = (projectId) => {
       showStatus(resp.message, true);
     }
   });
+};
+
+const buildProjectSwitchWarning = () => {
+  const warnings = [];
+  const lockedSeats = getSelfLockedSeats();
+  if (lockedSeats.length) warnings.push(`已锁定座位：${lockedSeats.length} 个`);
+  if (pendingIssue) warnings.push('有待签发/待扫码任务');
+  if (checkinLoopActive || scanningLoopActive || voucherScanLoopActive) warnings.push('摄像头扫码正在运行');
+  if (pendingCheckins.length) warnings.push(`待重试检票：${pendingCheckins.length} 条`);
+  if (merchCart.length) warnings.push(`文创购物车：${merchCart.length} 种商品`);
+  if (activeTicketCoupon) warnings.push('已绑定优惠券');
+  if (voucherScanDialog?.open) warnings.push('扫码弹窗未关闭');
+  return warnings;
+};
+
+const resetLocalStateForProjectSwitch = async () => {
+  stopCheckinScanner();
+  stopIssueScanner();
+  stopVoucherScan();
+  closeVoucherDialog();
+  clearSeatLockQueue();
+
+  if (manualCodeInput) manualCodeInput.value = '';
+  if (issueUploadFile) issueUploadFile.value = '';
+  if (scanOverlay) scanOverlay.textContent = '等待签发指令...';
+
+  // 释放本机锁座
+  const lockedSeats = getSelfLockedSeats();
+  if (lockedSeats.length && activeProject?.id) {
+    lockedSeats.forEach((seat) => {
+      const id = seatKey(seat.row, seat.col);
+      const seatRef = activeProject?.seats?.[id];
+      if (seatRef) {
+        seatRef.status = 'available';
+        seatRef.lockedBy = null;
+        seatRef.lockExpiresAt = null;
+        updateSeatElement(id);
+      }
+    });
+    await Promise.allSettled(
+      lockedSeats.map((seat) =>
+        emitAsync('unlock-seat', { projectId: activeProject.id, seatId: seatKey(seat.row, seat.col) })
+      )
+    );
+  }
+
+  // 清空优惠券/待重试/购物车等本机状态
+  clearTicketCoupon();
+  pendingIssue = null;
+  pendingCheckins = [];
+  await savePendingCheckins(pendingCheckins);
+  renderPendingCheckins();
+
+  merchCart = [];
+  if (inputPresaleCode) inputPresaleCode.value = '';
+  if (inputRedeemCode) inputRedeemCode.value = '';
+  if (merchNoteInput) merchNoteInput.value = '';
+  if (merchStatusEl) merchStatusEl.textContent = '';
+  if (redeemVoucherInfo) redeemVoucherInfo.textContent = '暂无预购券信息。';
+  renderMerchCart();
+  renderMerchProducts();
+  renderMerchModes();
+
+  if (checkinResultEl) checkinResultEl.textContent = '等待检票...';
+  setCheckinOverlay('等待检票...', false);
+  updateSelectedList();
 };
 
 const refreshActiveProject = async () => {
@@ -1235,11 +2349,34 @@ const loadProject = async (projectId) => {
   }
 };
 
-projectSelect.addEventListener('change', (event) => {
-  const projectId = event.target.value;
-  if (!projectId) return;
-  loadProject(projectId);
-});
+if (projectSelect) {
+  projectSelect.addEventListener('change', async (event) => {
+    if (isRevertingProjectSelect) return;
+    const projectId = event.target.value;
+    if (!projectId) return;
+    const prevProjectId = activeProject?.id || '';
+    if (prevProjectId && prevProjectId !== projectId) {
+      const warnings = buildProjectSwitchWarning();
+      if (warnings.length) {
+        const ok = window.confirm(
+          `切换项目将自动清空/停止以下本机状态，以避免跨项目误操作：\n\n- ${warnings.join(
+            '\n- '
+          )}\n\n是否继续切换？`
+        );
+        if (!ok) {
+          isRevertingProjectSelect = true;
+          projectSelect.value = prevProjectId;
+          window.setTimeout(() => {
+            isRevertingProjectSelect = false;
+          }, 0);
+          return;
+        }
+      }
+      await resetLocalStateForProjectSwitch();
+    }
+    await loadProject(projectId);
+  });
+}
 
 if (btnRefreshProjects) {
   btnRefreshProjects.addEventListener('click', () => {
@@ -1259,16 +2396,21 @@ const ensureScanner = async () => {
   if (barcodeDetector || scanContext) return Boolean(barcodeDetector);
   if (!navigator.mediaDevices) {
     showStatus('该设备不支持摄像头调用，请使用手动输入。', true);
+    issueCameraLastError = '设备不支持摄像头调用';
+    renderScanMethodsPanels();
     return false;
   }
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    showStatus('需使用 HTTPS 访问才能调起摄像头，请切换到 https 或改用手动输入。', true);
+  renderHttpsHelpPanels();
+  if (!window.isSecureContext) {
+    showStatus('摄像头扫码需要受信任的 HTTPS（或 localhost/127.0.0.1），已切换到手动输入。', true);
+    showScanOverlayMessage('摄像头扫码需要 HTTPS：可在下方一键复制/打开 HTTPS 链接。', { visible: true });
+    issueCameraLastError = '需要 HTTPS（或 localhost/127.0.0.1）才能调用摄像头';
+    renderScanMethodsPanels();
+    return false;
   }
   try {
     if (videoEl && !videoEl.hasAttribute('playsinline')) videoEl.setAttribute('playsinline', 'true');
-    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-      showStatus('为调用摄像头，请使用 HTTPS 访问或切换到手动输入。', true);
-    }
+    renderHttpsHelpPanels();
     videoStream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
@@ -1287,54 +2429,76 @@ const ensureScanner = async () => {
         ? '摄像头权限被拒绝，请在浏览器/系统设置中允许摄像头权限，或改用手动输入。'
         : '无法访问摄像头，请检查权限或改用手动输入。';
     showStatus(reason, true);
+    issueCameraLastError = reason;
+    renderScanMethodsPanels();
     return false;
   }
-  if ('BarcodeDetector' in window) {
-    try {
-      try {
-        barcodeDetector = new window.BarcodeDetector({ formats: BARCODE_FORMATS });
-      } catch {
-        barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
-      }
-      scanCanvas.width = 640;
-      scanCanvas.height = 360;
-      scanContext = scanCanvas.getContext('2d');
-      startScanLoop();
-    } catch (error) {
-      barcodeDetector = null;
-      // 原生初始化失败时尝试 jsQR 回退
-      if (window.jsQR) {
-        scanCanvas.width = 640;
-        scanCanvas.height = 360;
-        scanContext = scanCanvas.getContext('2d');
-        jsQrDetector = {
-          detect: async (canvas) => {
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return [];
-            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  issueCameraLastError = '';
+  renderScanMethodsPanels();
+	  if ('BarcodeDetector' in window) {
+	    try {
+	      try {
+	        barcodeDetector = new window.BarcodeDetector({ formats: BARCODE_FORMATS });
+	      } catch {
+	        barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+	      }
+	      scanCanvas.width = 640;
+	      scanCanvas.height = 360;
+	      scanContext = scanCanvas.getContext('2d');
+	      startScanLoop();
+	    } catch (error) {
+	      barcodeDetector = null;
+	      // 原生初始化失败时尝试 ZXing（多码制）回退，再尝试 jsQR
+	      zxingDetector = zxingDetector || createZxingCanvasDetector();
+	      if (zxingDetector) {
+	        scanCanvas.width = 640;
+	        scanCanvas.height = 360;
+	        scanContext = scanCanvas.getContext('2d');
+	        barcodeDetector = zxingDetector;
+	        startScanLoop();
+	        showStatus('已切换到软件识别模式（ZXing）。');
+	        showScanOverlayMessage('已切换到软件识别模式（ZXing），请继续对准条码/二维码。', { visible: true });
+	      } else if (window.jsQR) {
+	        scanCanvas.width = 640;
+	        scanCanvas.height = 360;
+	        scanContext = scanCanvas.getContext('2d');
+	        jsQrDetector = jsQrDetector || {
+	          detect: async (canvas) => {
+	            const ctx = canvas.getContext('2d');
+	            if (!ctx) return [];
+	            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const result = window.jsQR(img.data, canvas.width, canvas.height, {
               inversionAttempts: 'attemptBoth',
             });
             return result ? [{ rawValue: result.data }] : [];
-          },
-        };
-        barcodeDetector = jsQrDetector;
-        startScanLoop();
-      } else {
-        showStatus('无法初始化二维码识别，将启用手动输入。', true);
-      }
-    }
-  } else {
-    // Fallback：使用 jsQR 软件识别（需在页面引入 jsQR 脚本）
-    if (window.jsQR) {
-      scanCanvas.width = 640;
-      scanCanvas.height = 360;
-      scanContext = scanCanvas.getContext('2d');
-      jsQrDetector = {
-        detect: async (canvas) => {
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return [];
-          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	          },
+	        };
+	        barcodeDetector = jsQrDetector;
+	        startScanLoop();
+	      } else {
+	        showStatus('扫码引擎不可用：未能初始化识别器，请使用手动输入。', true);
+	      }
+	    }
+	  } else {
+	    // Fallback：ZXing（多码制）→ jsQR（仅二维码）
+	    zxingDetector = zxingDetector || createZxingCanvasDetector();
+	    if (zxingDetector) {
+	      scanCanvas.width = 640;
+	      scanCanvas.height = 360;
+	      scanContext = scanCanvas.getContext('2d');
+	      barcodeDetector = zxingDetector;
+	      startScanLoop();
+	      showStatus('已切换到软件识别模式（ZXing）。');
+	      showScanOverlayMessage('已切换到软件识别模式（ZXing），请继续对准条码/二维码。', { visible: true });
+	    } else if (window.jsQR) {
+	      scanCanvas.width = 640;
+	      scanCanvas.height = 360;
+	      scanContext = scanCanvas.getContext('2d');
+	      jsQrDetector = jsQrDetector || {
+	        detect: async (canvas) => {
+	          const ctx = canvas.getContext('2d');
+	          if (!ctx) return [];
+	          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const result = window.jsQR(img.data, canvas.width, canvas.height, {
             inversionAttempts: 'attemptBoth',
           });
@@ -1344,10 +2508,110 @@ const ensureScanner = async () => {
       barcodeDetector = jsQrDetector;
       startScanLoop();
     } else {
-      showStatus('浏览器暂不支持二维码识别，请使用手动输入。');
+      showStatus('浏览器不支持扫码，且未加载回退识别脚本（可能离线）。请使用手动输入。', true);
     }
   }
   return Boolean(barcodeDetector);
+};
+
+const drawImageFileToCanvas = async (file, maxDim = 1200) => {
+  if (!file) return null;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+
+  const loadViaImg = () =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('图片加载失败'));
+      };
+      img.src = url;
+    });
+
+  let source = null;
+  try {
+    source = window.createImageBitmap ? await createImageBitmap(file) : await loadViaImg();
+  } catch {
+    try {
+      source = await loadViaImg();
+    } catch {
+      return null;
+    }
+  }
+
+  const srcW = source.width || source.videoWidth;
+  const srcH = source.height || source.videoHeight;
+  if (!srcW || !srcH) return null;
+  const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
+  canvas.width = Math.max(1, Math.floor(srcW * scale));
+  canvas.height = Math.max(1, Math.floor(srcH * scale));
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  if (source && typeof source.close === 'function') {
+    source.close();
+  }
+  return { canvas, ctx };
+};
+
+const decodeBarcodeFromImageFile = async (file) => {
+  const drawn = await drawImageFileToCanvas(file, 1280);
+  if (!drawn) return null;
+  const { canvas, ctx } = drawn;
+
+  if ('BarcodeDetector' in window) {
+    try {
+      let detector = null;
+      try {
+        detector = new window.BarcodeDetector({ formats: BARCODE_FORMATS });
+      } catch {
+        detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      }
+      const codes = await detector.detect(canvas);
+      const raw = (codes?.[0]?.rawValue || '').trim();
+      if (raw) return raw;
+    } catch {
+      // ignore and fallback
+    }
+  }
+
+  if (window.jsQR) {
+    try {
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const result = window.jsQR(img.data, canvas.width, canvas.height, {
+        inversionAttempts: 'attemptBoth',
+      });
+      const raw = (result?.data || '').trim();
+      if (raw) return raw;
+    } catch {
+      // ignore
+    }
+  }
+
+  // 最终兜底：ZXing（支持 PDF417/一维码/二维码等），用于“上传图片识别”等场景
+  if (window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader) {
+    try {
+      // 为 PDF417 等提高一次分辨率（过小会影响识别）
+      const hiRes = await drawImageFileToCanvas(file, 2048);
+      const targetCanvas = hiRes?.canvas || canvas;
+      const reader = new window.ZXingBrowser.BrowserMultiFormatReader();
+      try {
+        const result = await reader.decodeFromCanvas(targetCanvas);
+        const raw = (result?.getText?.() || result?.text || '').trim();
+        if (raw) return raw;
+      } finally {
+        if (typeof reader.reset === 'function') reader.reset();
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
 };
 
 const stopCheckinScanner = () => {
@@ -1356,25 +2620,38 @@ const stopCheckinScanner = () => {
     checkinStream.getTracks().forEach((t) => t.stop());
     checkinStream = null;
   }
+  if (checkinDetector && typeof checkinDetector.reset === 'function') {
+    try {
+      checkinDetector.reset();
+    } catch {
+      // ignore
+    }
+  }
   checkinDetector = null;
   checkinContext = null;
   setCheckinOverlay('已停止检票', true);
+  renderScanMethodsPanels();
 };
 
 const startCheckinScanner = async () => {
   if (!checkinVideo || !checkinCanvas) return;
   if (!navigator.mediaDevices) {
     setCheckinResult('设备不支持摄像头，请使用手动检票。', 'error');
+    checkinCameraLastError = '设备不支持摄像头调用';
+    renderScanMethodsPanels();
     return;
   }
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    setCheckinResult('需使用 HTTPS 访问才能调起摄像头，请切换到 https 或改用手动检票。', 'error');
+  renderHttpsHelpPanels();
+  if (!window.isSecureContext) {
+    setCheckinOverlay('摄像头扫码需要 HTTPS，可在下方复制/打开 HTTPS 链接。', true);
+    setCheckinResult('摄像头扫码需要受信任的 HTTPS（或 localhost/127.0.0.1）。', 'error');
+    checkinCameraLastError = '需要 HTTPS（或 localhost/127.0.0.1）才能调用摄像头';
+    renderScanMethodsPanels();
+    return;
   }
   try {
     if (!checkinVideo.hasAttribute('playsinline')) checkinVideo.setAttribute('playsinline', 'true');
-    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-      setCheckinResult('为调用摄像头，请使用 HTTPS 访问或改用手动检票。', 'error');
-    }
+    renderHttpsHelpPanels();
     checkinStream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
@@ -1390,8 +2667,12 @@ const startCheckinScanner = async () => {
         ? '摄像头权限被拒绝，请在浏览器/系统设置中允许摄像头权限，或改用手动检票。'
         : '无法访问摄像头，请检查权限或改用手动检票。';
     setCheckinResult(reason, 'error');
+    checkinCameraLastError = reason;
+    renderScanMethodsPanels();
     return;
   }
+  checkinCameraLastError = '';
+  renderScanMethodsPanels();
   if ('BarcodeDetector' in window) {
     try {
       try {
@@ -1407,9 +2688,21 @@ const startCheckinScanner = async () => {
       setCheckinOverlay('摄像头已就绪，开始扫码检票。', true);
       setCheckinResult('摄像头已就绪，开始扫码检票。', null);
     } catch (error) {
-      // 回退 jsQR
+      // 回退：ZXing（多码制）→ jsQR（仅二维码）
+      zxingCheckinDetector = zxingCheckinDetector || createZxingCanvasDetector();
+      if (zxingCheckinDetector) {
+        checkinDetector = zxingCheckinDetector;
+        checkinCanvas.width = 640;
+        checkinCanvas.height = 360;
+        checkinContext = checkinCanvas.getContext('2d');
+        checkinLoopActive = true;
+        runCheckinLoop();
+        setCheckinOverlay('已切换到软件识别模式（ZXing），请将条码/二维码对准取景框。', true);
+        setCheckinResult('已切换到软件识别模式（ZXing）。', 'notice');
+        return;
+      }
       if (window.jsQR) {
-        jsQrCheckinDetector = {
+        jsQrCheckinDetector = jsQrCheckinDetector || {
           detect: async (canvas) => {
             const ctx = canvas.getContext('2d');
             if (!ctx) return [];
@@ -1426,15 +2719,27 @@ const startCheckinScanner = async () => {
         checkinContext = checkinCanvas.getContext('2d');
         checkinLoopActive = true;
         runCheckinLoop();
-        setCheckinOverlay('已切换到软件识别模式。', true);
-        setCheckinResult('已切换到软件识别模式。', null);
+        setCheckinOverlay('已切换到软件识别模式（jsQR），请将二维码对准取景框。', true);
+        setCheckinResult('已切换到软件识别模式（jsQR）。', 'notice');
       } else {
         setCheckinResult('浏览器不支持扫码，请使用手动检票。', 'error');
       }
     }
   } else {
+    zxingCheckinDetector = zxingCheckinDetector || createZxingCanvasDetector();
+    if (zxingCheckinDetector) {
+      checkinDetector = zxingCheckinDetector;
+      checkinCanvas.width = 640;
+      checkinCanvas.height = 360;
+      checkinContext = checkinCanvas.getContext('2d');
+      checkinLoopActive = true;
+      runCheckinLoop();
+      setCheckinOverlay('已切换到软件识别模式（ZXing），请将条码/二维码对准取景框。', true);
+      setCheckinResult('已切换到软件识别模式（ZXing）。', 'notice');
+      return;
+    }
     if (window.jsQR) {
-      jsQrCheckinDetector = {
+      jsQrCheckinDetector = jsQrCheckinDetector || {
         detect: async (canvas) => {
           const ctx = canvas.getContext('2d');
           if (!ctx) return [];
@@ -1451,8 +2756,8 @@ const startCheckinScanner = async () => {
       checkinContext = checkinCanvas.getContext('2d');
       checkinLoopActive = true;
       runCheckinLoop();
-      setCheckinOverlay('已切换到软件识别模式。', true);
-      setCheckinResult('已切换到软件识别模式。', null);
+      setCheckinOverlay('已切换到软件识别模式（jsQR），请将二维码对准取景框。', true);
+      setCheckinResult('已切换到软件识别模式（jsQR）。', 'notice');
     } else {
       setCheckinResult('浏览器不支持扫码，请使用手动检票。', 'error');
     }
@@ -1476,21 +2781,30 @@ const runCheckinLoop = async () => {
         checkinDetectFailCount = 0;
       } else {
         checkinDetectFailCount += 1;
-        if (checkinDetectFailCount > 3 && window.jsQR && checkinDetector !== jsQrCheckinDetector) {
-          jsQrCheckinDetector = {
-            detect: async (canvas) => {
-              const ctx = canvas.getContext('2d');
-              if (!ctx) return [];
-              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const result = window.jsQR(img.data, canvas.width, canvas.height, {
-                inversionAttempts: 'attemptBoth',
-              });
-              return result ? [{ rawValue: result.data }] : [];
-            },
-          };
-          checkinDetector = jsQrCheckinDetector;
-          checkinDetectFailCount = 0;
-          setCheckinOverlay('已自动切换到软件识别模式', true);
+        if (checkinDetectFailCount > 3) {
+          zxingCheckinDetector = zxingCheckinDetector || createZxingCanvasDetector();
+          if (zxingCheckinDetector && checkinDetector !== zxingCheckinDetector) {
+            checkinDetector = zxingCheckinDetector;
+            checkinDetectFailCount = 0;
+            setCheckinOverlay('已自动切换到软件识别模式（ZXing）', true);
+            setCheckinResult('已自动切换到软件识别模式（ZXing）。', 'notice');
+          } else if (window.jsQR && checkinDetector !== jsQrCheckinDetector) {
+            jsQrCheckinDetector = jsQrCheckinDetector || {
+              detect: async (canvas) => {
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return [];
+                const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const result = window.jsQR(img.data, canvas.width, canvas.height, {
+                  inversionAttempts: 'attemptBoth',
+                });
+                return result ? [{ rawValue: result.data }] : [];
+              },
+            };
+            checkinDetector = jsQrCheckinDetector;
+            checkinDetectFailCount = 0;
+            setCheckinOverlay('已自动切换到软件识别模式（jsQR）', true);
+            setCheckinResult('已自动切换到软件识别模式（jsQR）。', 'notice');
+          }
         }
       }
     }
@@ -1521,22 +2835,31 @@ const startScanLoop = () => {
         detectFailCount = 0;
       } catch {
         detectFailCount += 1;
-        // 连续失败时尝试切换为 jsQR 回退
-        if (detectFailCount > 3 && window.jsQR && barcodeDetector !== jsQrDetector) {
-          jsQrDetector = {
-            detect: async (canvas) => {
-              const ctx = canvas.getContext('2d');
-              if (!ctx) return [];
-              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const result = window.jsQR(img.data, canvas.width, canvas.height, {
-                inversionAttempts: 'attemptBoth',
-              });
-              return result ? [{ rawValue: result.data }] : [];
-            },
-          };
-          barcodeDetector = jsQrDetector;
-          detectFailCount = 0;
-          showStatus('已切换到软件识别模式，请继续对准二维码。');
+        // 连续失败时尝试切换识别引擎：ZXing（多码制）→ jsQR（仅二维码）
+        if (detectFailCount > 3) {
+          zxingDetector = zxingDetector || createZxingCanvasDetector();
+          if (zxingDetector && barcodeDetector !== zxingDetector) {
+            barcodeDetector = zxingDetector;
+            detectFailCount = 0;
+            showStatus('已切换到软件识别模式（ZXing），请继续对准条码/二维码。');
+            showScanOverlayMessage('已切换到软件识别模式（ZXing），请继续对准条码/二维码。', { visible: true });
+          } else if (window.jsQR && barcodeDetector !== jsQrDetector) {
+            jsQrDetector = jsQrDetector || {
+              detect: async (canvas) => {
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return [];
+                const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const result = window.jsQR(img.data, canvas.width, canvas.height, {
+                  inversionAttempts: 'attemptBoth',
+                });
+                return result ? [{ rawValue: result.data }] : [];
+              },
+            };
+            barcodeDetector = jsQrDetector;
+            detectFailCount = 0;
+            showStatus('已切换到软件识别模式（jsQR），请继续对准二维码。');
+            showScanOverlayMessage('已切换到软件识别模式（jsQR），请继续对准二维码。', { visible: true });
+          }
         }
       }
     }
@@ -1579,10 +2902,14 @@ const clearPendingIssue = ({ keepMessage = false } = {}) => {
 };
 
 const issueSeat = (seatId, ticketCode) => {
-  socket.emit('seat:issue', { projectId: activeProject.id, seatId, ticketCode }, (resp) => {
+  const couponCode = (inputTicketCoupon?.value || '').trim();
+  socket.emit('seat:issue', { projectId: activeProject.id, seatId, ticketCode, couponCode }, (resp) => {
     if (!resp.ok) {
       showStatus(resp.message || '签发失败', true);
       showScanOverlayMessage(resp.message || '签发失败，请重试。', { visible: true });
+      if (resp.code && String(resp.code).startsWith('COUPON_')) {
+        setTicketCouponInfo(resp.message || '优惠券不可用', true);
+      }
       return;
     }
     const seat = activeProject?.seats?.[seatId];
@@ -1591,6 +2918,19 @@ const issueSeat = (seatId, ticketCode) => {
       seat.lockedBy = null;
       seat.lockExpiresAt = null;
       seat.issuedAt = Date.now();
+      if (resp.seat && typeof resp.seat === 'object') {
+        if (resp.seat.price !== undefined) seat.price = resp.seat.price;
+        if (resp.seat.status) seat.status = resp.seat.status;
+      }
+    }
+    if (resp.coupon && resp.coupon.code) {
+      const label = `已使用优惠券 ${resp.coupon.code}，剩余 ${resp.coupon.remaining}`;
+      setTicketCouponInfo(label);
+      if (resp.coupon.status === 'used' || resp.coupon.remaining <= 0) {
+        setTicketCouponInfo(`优惠券 ${resp.coupon.code} 已用尽。`);
+        if (inputTicketCoupon) inputTicketCoupon.value = '';
+        activeTicketCoupon = null;
+      }
     }
     updateSeatElement(seatId);
     updateSelectedList();
@@ -1623,6 +2963,8 @@ const beginIssuance = async (seatId) => {
     return;
   }
   const scannerReady = await ensureScanner();
+  issueScanPreference = scannerReady ? 'camera' : 'manual';
+  renderScanMethodsPanels();
   if (!seat.ticketCode) {
     try {
       const { ticketCode } = await requestTicketCode(seatId);
@@ -1642,10 +2984,10 @@ const beginIssuance = async (seatId) => {
     { visible: true }
   );
   showStatus(scannerReady ? '正在等待二维码...' : '请输入票码进行验证。');
-  manualCodeInput.focus();
+  if (!scannerReady && manualCodeInput) manualCodeInput.focus();
 };
 
-btnManualConfirm.addEventListener('click', async () => {
+if (btnManualConfirm) btnManualConfirm.addEventListener('click', async () => {
   if (!activeProject) {
     showStatus('请选择项目后再操作。', true);
     return;
@@ -1681,14 +3023,58 @@ btnManualConfirm.addEventListener('click', async () => {
   issueSeat(pendingIssue.seatId, code);
 });
 
-manualCodeInput.addEventListener('keydown', (event) => {
+if (manualCodeInput) manualCodeInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
     btnManualConfirm.click();
   }
 });
 
-btnAutoSelect.addEventListener('click', async () => {
+if (manualCodeInput) {
+  manualCodeInput.addEventListener('focus', () => {
+    issueScanPreference = 'manual';
+    renderScanMethodsPanels();
+  });
+}
+
+if (issueUploadFile) {
+  issueUploadFile.addEventListener('click', () => {
+    issueScanPreference = 'upload';
+    renderScanMethodsPanels();
+  });
+  issueUploadFile.addEventListener('change', () => {
+    issueScanPreference = 'upload';
+    renderScanMethodsPanels();
+  });
+}
+
+if (btnIssueUploadScan) {
+  btnIssueUploadScan.addEventListener('click', async () => {
+    issueScanPreference = 'upload';
+    renderScanMethodsPanels();
+    if (!pendingIssue) {
+      showStatus('请先选择座位并点击“签发”，再上传二维码图片。', true);
+      return;
+    }
+    const file = issueUploadFile?.files?.[0];
+    if (!file) {
+      showStatus('请选择二维码图片。', true);
+      return;
+    }
+    showScanOverlayMessage('正在识别图片中的二维码...', { visible: true });
+    const code = await decodeBarcodeFromImageFile(file);
+    if (issueUploadFile) issueUploadFile.value = '';
+    if (!code) {
+      showStatus('未识别到二维码，请换一张更清晰的图片或使用手动输入。', true);
+      showScanOverlayMessage('未识别到二维码，请重试或手动输入票码。', { visible: true });
+      return;
+    }
+    manualCodeInput.value = code;
+    handleScannedCode(code);
+  });
+}
+
+if (btnAutoSelect) btnAutoSelect.addEventListener('click', async () => {
   if (!activeProject) {
     showStatus('请选择项目。', true);
     return;
@@ -1941,7 +3327,7 @@ const retryPending = async (codes) => {
     setCheckinResult(error.message || '重试失败', 'error');
   }
 };
-btnLogout.addEventListener('click', async () => {
+if (btnLogout) btnLogout.addEventListener('click', async () => {
   try {
     await fetch('/api/auth/logout', { method: 'POST' });
   } catch {
@@ -1950,7 +3336,7 @@ btnLogout.addEventListener('click', async () => {
   window.location.href = '/login.html?role=sales';
 });
 
-btnHome.addEventListener('click', () => {
+if (btnHome) btnHome.addEventListener('click', () => {
   window.location.href = '/';
 });
 
@@ -1962,6 +3348,8 @@ if (btnRefreshMerchSales) {
 
 if (btnStartCheckin) {
   btnStartCheckin.addEventListener('click', () => {
+    checkinScanPreference = 'camera';
+    renderScanMethodsPanels();
     startCheckinScanner();
   });
 }
@@ -1977,12 +3365,57 @@ if (btnSubmitCheckin) {
   btnSubmitCheckin.addEventListener('click', () => submitCheckin());
 }
 
+if (btnCheckinUploadScan) {
+  btnCheckinUploadScan.addEventListener('click', async () => {
+    checkinScanPreference = 'upload';
+    renderScanMethodsPanels();
+    if (!activeProject) {
+      setCheckinResult('请选择项目后再检票。', 'error');
+      return;
+    }
+    const file = checkinUploadFile?.files?.[0];
+    if (!file) {
+      setCheckinResult('请选择二维码图片。', 'error');
+      return;
+    }
+    setCheckinOverlay('正在识别图片中的二维码...', true);
+    setCheckinResult('正在识别二维码...', 'notice');
+    const code = await decodeBarcodeFromImageFile(file);
+    if (checkinUploadFile) checkinUploadFile.value = '';
+    if (!code) {
+      setCheckinOverlay('未识别到二维码，请改用手动输入。', true);
+      setCheckinResult('未识别到二维码，请换一张更清晰的图片或手动输入。', 'error');
+      return;
+    }
+    if (inputCheckinCode) inputCheckinCode.value = code;
+    submitCheckin(code);
+  });
+}
+
 if (inputCheckinCode) {
   inputCheckinCode.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       submitCheckin();
     }
+  });
+}
+
+if (inputCheckinCode) {
+  inputCheckinCode.addEventListener('focus', () => {
+    checkinScanPreference = 'manual';
+    renderScanMethodsPanels();
+  });
+}
+
+if (checkinUploadFile) {
+  checkinUploadFile.addEventListener('click', () => {
+    checkinScanPreference = 'upload';
+    renderScanMethodsPanels();
+  });
+  checkinUploadFile.addEventListener('change', () => {
+    checkinScanPreference = 'upload';
+    renderScanMethodsPanels();
   });
 }
 
@@ -2056,10 +3489,120 @@ if (merchPaymentSelect) {
   populatePaymentOptions();
 }
 
+const updateMerchFulfillmentUi = () => {
+  const type = merchFulfillmentSelect?.value || 'stock';
+  const presale = type === 'presale';
+  if (merchPresalePanel) merchPresalePanel.hidden = !presale;
+  if (btnSubmitMerchOrder) btnSubmitMerchOrder.textContent = presale ? '签发预购券（预售）' : '提交文创订单';
+};
+
+const renderVoucherInfo = (voucher) => {
+  if (!voucher) {
+    setRedeemInfo('暂无预购券信息。');
+    if (btnRedeemVoucher) btnRedeemVoucher.disabled = true;
+    return;
+  }
+  const lines = [];
+  lines.push(`预购券：${voucher.code}`);
+  const statusLabel =
+    voucher.status === 'redeemed'
+      ? '已核销'
+      : voucher.status === 'issued'
+        ? '未核销'
+        : voucher.status === 'replaced'
+          ? '已换码'
+          : voucher.status === 'voided'
+            ? '已作废'
+            : voucher.status === 'refunded'
+              ? '已退款'
+              : voucher.status || '未知';
+  lines.push(`状态：${statusLabel}`);
+  if (voucher.replacedBy) lines.push(`新券码：${voucher.replacedBy}`);
+  if (voucher.createdAt) lines.push(`签发时间：${new Date(voucher.createdAt).toLocaleString()}`);
+  if (voucher.createdBy) lines.push(`签发人：${voucher.createdBy}`);
+  if (voucher.redeemedAt) lines.push(`核销时间：${new Date(voucher.redeemedAt).toLocaleString()}`);
+  if (voucher.redeemedBy) lines.push(`核销人：${voucher.redeemedBy}`);
+  const items = Array.isArray(voucher.items) ? voucher.items : [];
+  if (items.length) {
+    lines.push('商品：');
+    items.slice(0, 10).forEach((it) => {
+      lines.push(`- ${it.name} ×${it.quantity}  单价¥${Number(it.unitPrice).toFixed(2)}`);
+    });
+    if (items.length > 10) lines.push('...更多商品未显示');
+  }
+  lines.push(`应付：¥${Number(voucher.totalAfter ?? 0).toFixed(2)}`);
+  setRedeemInfo(lines.join('\n'));
+  if (btnRedeemVoucher) btnRedeemVoucher.disabled = voucher.status !== 'issued';
+};
+
+const lookupVoucher = async () => {
+  const code = (inputRedeemCode?.value || '').trim();
+  if (!code) {
+    setRedeemInfo('请输入预购券码。', true);
+    return;
+  }
+  setRedeemInfo('正在查询...');
+  if (btnRedeemVoucher) btnRedeemVoucher.disabled = true;
+  try {
+    const resp = await authFetch(`/api/merch/vouchers/${encodeURIComponent(code)}`);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || '查询失败');
+    renderVoucherInfo(data.voucher);
+  } catch (error) {
+    setRedeemInfo(error.message || '查询失败', true);
+  }
+};
+
+const redeemVoucher = async () => {
+  const code = (inputRedeemCode?.value || '').trim();
+  if (!code) {
+    setRedeemInfo('请输入预购券码。', true);
+    return;
+  }
+  setRedeemInfo('正在核销...');
+  if (btnRedeemVoucher) btnRedeemVoucher.disabled = true;
+  try {
+    const resp = await authFetch(`/api/merch/vouchers/${encodeURIComponent(code)}/redeem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      if (resp.status === 409 && data.code === 'VOUCHER_REPLACED' && data.replacedBy) {
+        throw new Error(`该预购券已换码，请使用新券码：${data.replacedBy}`);
+      }
+      if (resp.status === 409 && data.code === 'OUT_OF_STOCK') {
+        const shortages = Array.isArray(data.shortages) ? data.shortages : [];
+        const detail = shortages.length
+          ? shortages
+              .slice(0, 5)
+              .map((s) => `${s.name}（需 ${s.requested}，余 ${s.stock}）`)
+              .join('；')
+          : '';
+        throw new Error(`库存不足，无法核销：${detail || ''}`);
+      }
+      throw new Error(data.error || '核销失败');
+    }
+    renderVoucherInfo(data.voucher);
+    setRedeemInfo('核销成功，库存已扣减。');
+    await fetchMerchData();
+  } catch (error) {
+    setRedeemInfo(error.message || '核销失败', true);
+  }
+};
+
 if (btnSubmitMerchOrder) {
   btnSubmitMerchOrder.addEventListener('click', async () => {
     if (!merchCart.length) {
       setMerchStatus('购物车为空。', true);
+      return;
+    }
+    const fulfillmentType = merchFulfillmentSelect?.value || 'stock';
+    const isPresale = fulfillmentType === 'presale';
+    const presaleCode = (inputPresaleCode?.value || '').trim();
+    if (isPresale && !presaleCode) {
+      setMerchStatus('预售订单需要扫描/输入预购券条码。', true);
       return;
     }
     const paymentMethod = merchPaymentSelect?.value || MERCH_PAYMENT_OPTIONS[0];
@@ -2068,38 +3611,128 @@ if (btnSubmitMerchOrder) {
       checkoutModeId: merchCheckoutModeSelect?.value || null,
       note: merchNoteInput?.value?.trim() || '',
       paymentMethod,
+      orderType: isPresale ? 'presale' : 'stock',
+      voucherCode: isPresale ? presaleCode : null,
     };
-    setMerchStatus('正在提交订单...');
-    try {
-      const response = await authFetch('/api/merch/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => null);
-        throw new Error(error?.error || '提交失败');
-      }
-      await response.json();
-      setMerchStatus('已记录文创订单。');
-      merchCart = [];
-      renderMerchCart();
-      if (merchNoteInput) {
-        merchNoteInput.value = '';
-      }
-      await fetchMerchData();
-    } catch (error) {
-      setMerchStatus(error.message, true);
+    await submitMerchOrder(payload, false);
+  });
+}
+
+if (merchFulfillmentSelect) {
+  merchFulfillmentSelect.addEventListener('change', updateMerchFulfillmentUi);
+  updateMerchFulfillmentUi();
+}
+
+if (btnScanPresaleCode && inputPresaleCode) {
+  btnScanPresaleCode.addEventListener('click', () => {
+    openVoucherDialog({ title: '预购券扫码（用于预售签发）', targetInput: inputPresaleCode, mode: 'presale' });
+  });
+}
+
+if (btnScanRedeemCode && inputRedeemCode) {
+  btnScanRedeemCode.addEventListener('click', () => {
+    openVoucherDialog({ title: '预购券扫码（用于核销）', targetInput: inputRedeemCode, mode: 'redeem' });
+  });
+}
+
+if (btnScanTicketCoupon && inputTicketCoupon) {
+  btnScanTicketCoupon.addEventListener('click', () => {
+    openVoucherDialog({ title: '优惠券扫码（用于售票）', targetInput: inputTicketCoupon, mode: 'ticket-coupon' });
+  });
+}
+
+if (btnLookupTicketCoupon) btnLookupTicketCoupon.addEventListener('click', lookupTicketCoupon);
+if (btnClearTicketCoupon) btnClearTicketCoupon.addEventListener('click', clearTicketCoupon);
+if (inputTicketCoupon) {
+  inputTicketCoupon.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      lookupTicketCoupon();
     }
+  });
+}
+
+if (btnLookupVoucher) btnLookupVoucher.addEventListener('click', lookupVoucher);
+if (btnRedeemVoucher) btnRedeemVoucher.addEventListener('click', redeemVoucher);
+if (inputRedeemCode) {
+  inputRedeemCode.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      lookupVoucher();
+    }
+  });
+}
+
+if (btnVoucherScanStart) {
+  btnVoucherScanStart.addEventListener('click', () => {
+    voucherScanPreference = 'camera';
+    renderScanMethodsPanels();
+    startVoucherScan();
+  });
+}
+if (btnVoucherScanStop) btnVoucherScanStop.addEventListener('click', stopVoucherScan);
+if (btnVoucherClose) {
+  btnVoucherClose.addEventListener('click', () => {
+    stopVoucherScan();
+    closeVoucherDialog();
+  });
+}
+if (btnVoucherUse && voucherScanManual) {
+  btnVoucherUse.addEventListener('click', () => applyVoucherCode(voucherScanManual.value));
+}
+if (voucherScanManual) {
+  voucherScanManual.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      applyVoucherCode(voucherScanManual.value);
+    }
+  });
+}
+if (voucherScanManual) {
+  voucherScanManual.addEventListener('focus', () => {
+    voucherScanPreference = 'manual';
+    renderScanMethodsPanels();
+  });
+}
+if (btnVoucherUploadScan) {
+  btnVoucherUploadScan.addEventListener('click', async () => {
+    voucherScanPreference = 'upload';
+    renderScanMethodsPanels();
+    const file = voucherScanUploadFile?.files?.[0];
+    if (!file) {
+      setVoucherOverlay('请选择条码图片。');
+      return;
+    }
+    setVoucherOverlay('正在识别图片中的条码...');
+    const code = await decodeBarcodeFromImageFile(file);
+    if (voucherScanUploadFile) voucherScanUploadFile.value = '';
+    if (!code) {
+      setVoucherOverlay('未识别到条码，请换一张更清晰的图片或手动输入。');
+      return;
+    }
+    applyVoucherCode(code);
+  });
+}
+
+if (voucherScanUploadFile) {
+  voucherScanUploadFile.addEventListener('click', () => {
+    voucherScanPreference = 'upload';
+    renderScanMethodsPanels();
+  });
+  voucherScanUploadFile.addEventListener('change', () => {
+    voucherScanPreference = 'upload';
+    renderScanMethodsPanels();
   });
 }
 
 window.addEventListener('beforeunload', () => {
   clearPendingIssue();
+  clearSeatLockQueue();
   if (videoStream) {
     videoStream.getTracks().forEach((track) => track.stop());
   }
   stopCheckinScanner();
+  stopVoucherScan();
 });
 
 switchModule('sales');

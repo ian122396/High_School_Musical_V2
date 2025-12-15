@@ -1,7 +1,9 @@
-const metricsStatus = document.getElementById('metrics-status');
+const metricsStatus = document.getElementById('metrics-status') || document.getElementById('ops-status');
 const metricsSummary = document.getElementById('metrics-summary');
 const metricsCounters = document.getElementById('metrics-counters');
-const btnRefresh = document.getElementById('btn-refresh-metrics');
+const opsMetrics = document.getElementById('ops-metrics');
+const btnRefresh = document.getElementById('btn-refresh-metrics') || document.getElementById('btn-refresh');
+const btnRefreshBackups = document.getElementById('btn-refresh-backups');
 const urlInput = document.getElementById('loadtest-url');
 const concurrencyInput = document.getElementById('loadtest-concurrency');
 const durationInput = document.getElementById('loadtest-duration');
@@ -9,6 +11,8 @@ const methodSelect = document.getElementById('loadtest-method');
 const btnStartLoad = document.getElementById('btn-start-loadtest');
 const loadResult = document.getElementById('loadtest-result');
 const loadStatus = document.getElementById('loadtest-status');
+const backupList = document.getElementById('backup-list');
+const btnDownloadState = document.getElementById('btn-download-state');
 
 const formatBytes = (bytes) => {
   if (!Number.isFinite(bytes)) return '-';
@@ -24,43 +28,107 @@ const formatBytes = (bytes) => {
 
 const renderMetrics = (data) => {
   const loadClass = (val) => (val > 2 ? 'status-error' : val > 1 ? 'status-warn' : 'status-ok');
-  metricsSummary.innerHTML = `
-    <div class="metric"><span>时间</span><span>${new Date(data.timestamp).toLocaleString()}</span></div>
-    <div class="metric"><span>进程运行</span><span>${data.uptimeSeconds?.toFixed(0) || '-'} s</span></div>
-    <div class="metric"><span>系统运行</span><span>${data.systemUptimeSeconds?.toFixed(0) || '-'} s</span></div>
-    <div class="metric"><span>负载(1m/5m/15m)</span>
-      <span class="${loadClass(data.loadavg?.[0] || 0)}">${(data.loadavg || []).map((n) => n?.toFixed(2)).join(' / ')}</span>
-    </div>
-    <div class="metric"><span>内存(进程RSS)</span><span>${formatBytes(data.memory?.rss)}</span></div>
-    <div class="metric"><span>内存使用率</span><span>${data.memory?.usedPercent ? data.memory.usedPercent.toFixed(1) + '%' : '-'}</span></div>
-    <div class="metric"><span>Node</span><span>${data.process?.nodeVersion || '-'}</span></div>
-    <div class="metric"><span>PID</span><span>${data.process?.pid || '-'}</span></div>
-  `;
-  metricsCounters.innerHTML = `
-    <div class="metric"><span>账号</span><span>${data.counters?.accounts ?? '-'}</span></div>
-    <div class="metric"><span>项目</span><span>${data.counters?.projects ?? '-'}</span></div>
-    <div class="metric"><span>商品</span><span>${data.counters?.merchProducts ?? '-'}</span></div>
-    <div class="metric"><span>订单</span><span>${data.counters?.merchOrders ?? '-'}</span></div>
-    <div class="metric"><span>审计日志</span><span>${data.counters?.auditLogs ?? '-'}</span></div>
-    <div class="metric"><span>检票日志</span><span>${data.counters?.checkinLogs ?? '-'}</span></div>
-    <div class="metric"><span>当前连接</span><span>${data.counters?.sockets ?? '-'}</span></div>
-  `;
+  if (metricsSummary && metricsCounters) {
+    metricsSummary.innerHTML = `
+      <div class="metric"><span>时间</span><span>${new Date(data.timestamp).toLocaleString()}</span></div>
+      <div class="metric"><span>进程运行</span><span>${data.uptimeSeconds?.toFixed(0) || '-'} s</span></div>
+      <div class="metric"><span>系统运行</span><span>${data.systemUptimeSeconds?.toFixed(0) || '-'} s</span></div>
+      <div class="metric"><span>负载(1m/5m/15m)</span>
+        <span class="${loadClass(data.loadavg?.[0] || 0)}">${(data.loadavg || []).map((n) => n?.toFixed(2)).join(' / ')}</span>
+      </div>
+      <div class="metric"><span>内存(进程RSS)</span><span>${formatBytes(data.memory?.rss)}</span></div>
+      <div class="metric"><span>内存使用率</span><span>${data.memory?.usedPercent ? data.memory.usedPercent.toFixed(1) + '%' : '-'}</span></div>
+      <div class="metric"><span>Node</span><span>${data.process?.nodeVersion || '-'}</span></div>
+      <div class="metric"><span>PID</span><span>${data.process?.pid || '-'}</span></div>
+    `;
+    metricsCounters.innerHTML = `
+      <div class="metric"><span>账号</span><span>${data.counters?.accounts ?? '-'}</span></div>
+      <div class="metric"><span>项目</span><span>${data.counters?.projects ?? '-'}</span></div>
+      <div class="metric"><span>商品</span><span>${data.counters?.merchProducts ?? '-'}</span></div>
+      <div class="metric"><span>订单</span><span>${data.counters?.merchOrders ?? '-'}</span></div>
+      <div class="metric"><span>审计日志</span><span>${data.counters?.auditLogs ?? '-'}</span></div>
+      <div class="metric"><span>检票日志</span><span>${data.counters?.checkinLogs ?? '-'}</span></div>
+      <div class="metric"><span>当前连接</span><span>${data.counters?.sockets ?? '-'}</span></div>
+    `;
+    return;
+  }
+
+  if (opsMetrics) {
+    const loadText = (data.loadavg || []).map((n) => n?.toFixed(2)).join(' / ');
+    const lines = [];
+    lines.push(`时间: ${new Date(data.timestamp).toLocaleString()}`);
+    lines.push(`进程运行: ${data.uptimeSeconds?.toFixed(0) || '-'} s`);
+    lines.push(`系统运行: ${data.systemUptimeSeconds?.toFixed(0) || '-'} s`);
+    lines.push(`负载(1m/5m/15m): ${loadText || '-'}`);
+    lines.push(`内存(进程RSS): ${formatBytes(data.memory?.rss)}`);
+    lines.push(`内存使用率: ${data.memory?.usedPercent ? data.memory.usedPercent.toFixed(1) + '%' : '-'}`);
+    lines.push(`Node: ${data.process?.nodeVersion || '-'}`);
+    lines.push(`PID: ${data.process?.pid || '-'}`);
+    lines.push('');
+    lines.push('计数:');
+    lines.push(`- 账号: ${data.counters?.accounts ?? '-'}`);
+    lines.push(`- 项目: ${data.counters?.projects ?? '-'}`);
+    lines.push(`- 商品: ${data.counters?.merchProducts ?? '-'}`);
+    lines.push(`- 订单: ${data.counters?.merchOrders ?? '-'}`);
+    lines.push(`- 审计日志: ${data.counters?.auditLogs ?? '-'}`);
+    lines.push(`- 检票日志: ${data.counters?.checkinLogs ?? '-'}`);
+    lines.push(`- 当前连接: ${data.counters?.sockets ?? '-'}`);
+    opsMetrics.textContent = lines.join('\n');
+  }
 };
 
 const fetchMetrics = async () => {
-  metricsStatus.textContent = '加载中...';
+  if (metricsStatus) metricsStatus.textContent = '加载中...';
   try {
     const res = await fetch('/api/metrics', { credentials: 'same-origin' });
     if (!res.ok) throw new Error('获取失败');
     const data = await res.json();
     renderMetrics(data);
-    metricsStatus.textContent = '已更新';
+    if (metricsStatus) metricsStatus.textContent = '已更新';
   } catch (err) {
-    metricsStatus.textContent = err.message || '加载失败（需管理员登录）';
+    if (metricsStatus) metricsStatus.textContent = err.message || '加载失败（需管理员登录）';
+    if (opsMetrics) opsMetrics.textContent = err.message || '加载失败（需管理员登录）';
+  }
+};
+
+const fetchBackups = async () => {
+  if (!backupList) return;
+  backupList.textContent = '加载中...';
+  try {
+    const res = await fetch('/api/backups', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('获取备份失败（需管理员登录）');
+    const data = await res.json();
+    const backups = data.backups || [];
+    if (!backups.length) {
+      backupList.textContent = '暂无备份';
+      return;
+    }
+    const ul = document.createElement('ul');
+    backups.forEach((b) => {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.textContent = `下载 ${b.name} (${new Date(b.mtime || Date.now()).toLocaleString()})`;
+      btn.className = 'button';
+      btn.onclick = () => {
+        const a = document.createElement('a');
+        a.href = `/api/backups/${encodeURIComponent(b.name)}`;
+        a.download = b.name;
+        a.click();
+      };
+      li.appendChild(btn);
+      ul.appendChild(li);
+    });
+    backupList.innerHTML = '';
+    backupList.appendChild(ul);
+  } catch (err) {
+    backupList.textContent = err.message || '加载失败';
   }
 };
 
 const runLoadTest = async () => {
+  if (!urlInput || !concurrencyInput || !durationInput || !methodSelect || !loadResult || !loadStatus) {
+    return;
+  }
   const url = urlInput.value.trim() || '/healthz';
   const concurrency = Math.max(1, Number(concurrencyInput.value) || 1);
   const durationSec = Math.max(1, Number(durationInput.value) || 5);
@@ -111,6 +179,17 @@ if (btnRefresh) {
 }
 if (btnStartLoad) {
   btnStartLoad.addEventListener('click', runLoadTest);
+}
+if (btnRefreshBackups) {
+  btnRefreshBackups.addEventListener('click', fetchBackups);
+}
+if (btnDownloadState) {
+  btnDownloadState.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = '/data/state.json';
+    a.download = 'state.json';
+    a.click();
+  });
 }
 
 fetchMetrics().catch(() => {});

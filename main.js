@@ -10,10 +10,10 @@ const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
 const bcrypt = require('bcryptjs');
 const { createCanvas, loadImage, Image } = require('canvas');
+const crypto = require('crypto');
 const os = require('os');
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
 const DATA_FILE = path.join(__dirname, 'data', 'state.json');
 const LOCK_DIR = path.join(__dirname, 'data', 'locks');
 const REDIS_URL = process.env.REDIS_URL || process.env.REDIS;
@@ -39,6 +39,9 @@ const AUTO_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
 const CERT_DIR = path.join(__dirname, 'certs');
 const CERT_KEY_PATH = process.env.SSL_KEY || path.join(CERT_DIR, 'key.pem');
 const CERT_CERT_PATH = process.env.SSL_CERT || path.join(CERT_DIR, 'cert.pem');
+const DAILY_BACKUP_PREFIX = 'daily-state';
+const CONFIRM_TTL_MS = 60 * 1000;
+const confirmChallenges = new Map();
 let redisClient = null;
 let redisAvailable = false;
 
@@ -60,6 +63,85 @@ const createServerWithTls = () => {
 
 const { server, isHttps } = createServerWithTls();
 const io = new Server(server);
+
+const cleanupConfirmChallenges = () => {
+  const now = Date.now();
+  for (const [token, record] of confirmChallenges.entries()) {
+    if (!record || now > record.expiresAt) {
+      confirmChallenges.delete(token);
+    }
+  }
+};
+
+setInterval(cleanupConfirmChallenges, 30 * 1000).unref();
+
+const issueConfirmChallenge = (req, { action, detail = '' }) => {
+  cleanupConfirmChallenges();
+  const token = uuidv4();
+  const sessionId = req.session?.sessionId || null;
+  const username = req.session?.username || null;
+  const role = req.session?.role || null;
+  const expiresAt = Date.now() + CONFIRM_TTL_MS;
+  confirmChallenges.set(token, { action, detail, sessionId, username, role, expiresAt });
+  return { token, expiresAt };
+};
+
+const consumeConfirmChallenge = (req, { action, token }) => {
+  if (!token) return { ok: false, error: '缺少 confirmToken' };
+  cleanupConfirmChallenges();
+  const record = confirmChallenges.get(token);
+  if (!record) return { ok: false, error: '确认已过期，请重试' };
+  if (record.action !== action) return { ok: false, error: '确认信息不匹配，请重试' };
+  if (record.sessionId && req.session?.sessionId && record.sessionId !== req.session.sessionId) {
+    return { ok: false, error: '确认已失效（会话变化），请重试' };
+  }
+  confirmChallenges.delete(token);
+  return { ok: true, record };
+};
+
+const requireDangerConfirm = (req, res, { action, detail }) => {
+  const token = typeof req.body?.confirmToken === 'string' ? req.body.confirmToken : '';
+  if (!token) {
+    const issued = issueConfirmChallenge(req, { action, detail });
+    res.status(409).json({
+      error: '需要二次确认',
+      code: 'CONFIRM_REQUIRED',
+      action,
+      detail,
+      confirmToken: issued.token,
+      expiresAt: issued.expiresAt,
+    });
+    return false;
+  }
+  const check = consumeConfirmChallenge(req, { action, token });
+  if (!check.ok) {
+    res.status(409).json({ error: check.error, code: 'CONFIRM_REQUIRED', action });
+    return false;
+  }
+  return true;
+};
+
+const backupAndRespondUndo = async (label) => {
+  const filePath = await createStateBackup(label);
+  const filename = filePath ? path.basename(filePath) : null;
+  return filename;
+};
+
+const getSocketSummary = (socketId) => {
+  if (!socketId) return null;
+  try {
+    const other = io.sockets?.sockets?.get(socketId);
+    if (!other) return { socketId };
+    const session = other.data?.session || null;
+    return {
+      socketId,
+      username: session?.username,
+      role: session?.role,
+    };
+  } catch {
+    return { socketId };
+  }
+};
 
 const ensureMerchOrderNumber = () => {
   ensureMerchState();
@@ -106,6 +188,16 @@ const nextMerchOrderNumber = async () => {
     const base12 = await generateBase();
     const check = computeCheckDigit(base12);
     const full = `${base12}${check}`;
+    // 全局唯一：Redis set 优先，避免多实例重号
+    await ensureRedis();
+    if (redisAvailable && redisClient) {
+      try {
+        const added = await redisClient.sAdd('merch:orderNumbers', full);
+        if (added === 1) return full;
+      } catch {
+        // ignore
+      }
+    }
     const exists = state.merch.orders.some((o) => o.orderNumber === full);
     if (!exists) return full;
     attempts += 1;
@@ -114,7 +206,16 @@ const nextMerchOrderNumber = async () => {
   const randomMiddle = `${Math.floor(Math.random() * 1e9)}`.padStart(9, '0');
   const base12 = prefix + randomMiddle;
   const check = computeCheckDigit(base12);
-  return `${base12}${check}`;
+  const full = `${base12}${check}`;
+  await ensureRedis();
+  if (redisAvailable && redisClient) {
+    try {
+      await redisClient.sAdd('merch:orderNumbers', full);
+    } catch {
+      // ignore
+    }
+  }
+  return full;
 };
 
 const ensureOrderHasNumber = async (order) => {
@@ -188,6 +289,46 @@ const ensureProjectMetadata = (project) => {
   if (!project.seatLabelProgress || typeof project.seatLabelProgress !== 'object') {
     project.seatLabelProgress = {};
   }
+  if (!project.ticketDiscountRules || typeof project.ticketDiscountRules !== 'object') {
+    project.ticketDiscountRules = {};
+  }
+  if (!project.ticketCoupons || typeof project.ticketCoupons !== 'object') {
+    project.ticketCoupons = {};
+  }
+};
+
+const normalizeCouponCode = (raw) => {
+  if (typeof raw !== 'string') return '';
+  return raw.trim().toUpperCase();
+};
+
+const generateTicketCouponCode = () => {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const bytes = crypto.randomBytes(6);
+  let body = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    body += alphabet[bytes[i] % alphabet.length];
+  }
+  const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+  return `CP${stamp}${body}`;
+};
+
+const normalizeAllowedPrices = (value) => {
+  if (!value) return null;
+  const raw = Array.isArray(value) ? value : String(value).split(/[,，\s]+/);
+  const prices = raw
+    .map((p) => Number(p))
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .map((n) => Math.round(n * 100) / 100);
+  const uniq = Array.from(new Set(prices.map((n) => String(n)))).map((s) => Number(s));
+  return uniq.length ? uniq.sort((a, b) => a - b) : null;
+};
+
+const formatDiscountMultiplier = (rate) => {
+  // rate 为“几折”，例如 9.5 折 => 0.95
+  const n = Number(rate);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.max(0, Math.min(1, Math.round((n / 10) * 10000) / 10000));
 };
 
 const ensureMerchState = () => {
@@ -202,6 +343,12 @@ const ensureMerchState = () => {
   }
   if (!Array.isArray(state.merch.orders)) {
     state.merch.orders = [];
+  }
+  if (!state.merch.vouchers || typeof state.merch.vouchers !== 'object') {
+    state.merch.vouchers = {};
+  }
+  if (!Array.isArray(state.merch.voucherRedemptions)) {
+    state.merch.voucherRedemptions = [];
   }
   if (!Object.keys(state.merch.checkoutModes).length) {
     const defaultModeId = uuidv4();
@@ -227,6 +374,13 @@ const ensureAuditState = () => {
   }
 };
 
+const validateStateShape = (candidate) => {
+  if (!candidate || typeof candidate !== 'object') return false;
+  if (!candidate.projects || typeof candidate.projects !== 'object') return false;
+  if (!candidate.accounts || typeof candidate.accounts !== 'object') return false;
+  return true;
+};
+
 const listBackups = async () => {
   try {
     await ensureBackupDir();
@@ -244,7 +398,8 @@ const listBackups = async () => {
         })
     );
     return enriched.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
-  } catch {
+  } catch (error) {
+    console.error('Failed to list backups:', error);
     return [];
   }
 };
@@ -267,7 +422,7 @@ const ensureRedis = async () => {
       await redisClient.connect();
     }
     redisAvailable = true;
-    console.log('Redis 连接成功，用于锁与序列号');
+    console.log('Redis 连接成功，用于锁与序列号（多实例建议开启）');
   } catch (error) {
     console.warn('Redis 不可用，回退文件锁/本地序列：', error.message);
     redisAvailable = false;
@@ -293,14 +448,23 @@ const acquireLock = async (key, { ttl = 5000, retry = 50, delay = 30 } = {}) => 
     const lockKey = `lock:${sanitizeLockKey(key)}`;
     for (let i = 0; i < retry; i += 1) {
       try {
-        const ok = await redisClient.set(lockKey, '1', { NX: true, PX: ttl });
+        const token = uuidv4();
+        const ok = await redisClient.set(lockKey, token, { NX: true, PX: ttl });
         if (ok) {
           const released = { value: false };
           return async () => {
             if (released.value) return;
             released.value = true;
             try {
-              await redisClient.del(lockKey);
+              // 仅在 token 匹配时释放，避免 TTL 过期后误删他人锁
+              const script = `
+                if redis.call("GET", KEYS[1]) == ARGV[1] then
+                  return redis.call("DEL", KEYS[1])
+                else
+                  return 0
+                end
+              `;
+              await redisClient.eval(script, { keys: [lockKey], arguments: [token] });
             } catch {
               /* ignore */
             }
@@ -311,7 +475,7 @@ const acquireLock = async (key, { ttl = 5000, retry = 50, delay = 30 } = {}) => 
       }
       await sleep(delay);
     }
-    throw new Error('锁等待超时，请稍后重试');
+    throw new Error('锁等待超时，请稍后重试或降低并发');
   }
 
   // 文件锁回退（同机共享）
@@ -350,6 +514,7 @@ const acquireLock = async (key, { ttl = 5000, retry = 50, delay = 30 } = {}) => 
   throw new Error('锁等待超时，请稍后重试');
 };
 
+let stateWriteQueue = Promise.resolve();
 const isTicketDuplicate = (project, ticketNumber, selfSeatId) => {
   if (!ticketNumber) return false;
   const norm = String(ticketNumber).trim().toUpperCase();
@@ -466,6 +631,16 @@ const dataUriToBuffer = (dataUri) => {
 
 const ensureBackupDir = async () => {
   await fs.mkdir(BACKUP_DIR, { recursive: true });
+};
+
+const ensureDailyBackup = async () => {
+  await ensureBackupDir();
+  const today = new Date().toISOString().slice(0, 10);
+  const filename = `${DAILY_BACKUP_PREFIX}-${today}.json`;
+  const filePath = path.join(BACKUP_DIR, filename);
+  if (!fsSync.existsSync(filePath)) {
+    await fs.writeFile(filePath, JSON.stringify(state, null, 2), 'utf8');
+  }
 };
 
 const createStateBackup = async (label = 'backup') => {
@@ -826,18 +1001,66 @@ const migrateLegacyState = (raw) => {
 };
 
 const loadState = async () => {
+  const normalizeLoadedState = (migrated) => {
+    const projects = migrated.projects && typeof migrated.projects === 'object' ? migrated.projects : {};
+    const accounts = migrated.accounts && typeof migrated.accounts === 'object' ? migrated.accounts : {};
+    const merch = migrated.merch && typeof migrated.merch === 'object' ? migrated.merch : {};
+    const auditLog = Array.isArray(migrated.auditLog) ? migrated.auditLog : [];
+    const checkInLogs = Array.isArray(migrated.checkInLogs) ? migrated.checkInLogs : [];
+    return { projects, accounts, merch, auditLog, checkInLogs };
+  };
+
+  const tryLoadBuffer = async (buffer) => {
+    const parsed = JSON.parse(buffer);
+    if (!validateStateShape(parsed)) throw new Error('state shape invalid');
+    const migrated = migrateLegacyState(parsed) || parsed;
+    state = normalizeLoadedState(migrated);
+  };
+
+  const tryRecoverFromBackups = async ({ reason, originalRaw }) => {
+    try {
+      await fs.mkdir(BACKUP_DIR, { recursive: true });
+      if (typeof originalRaw === 'string' && originalRaw.trim()) {
+        await fs.writeFile(path.join(BACKUP_DIR, `corrupt-state-${Date.now()}.json`), originalRaw, 'utf8');
+      }
+    } catch {
+      // ignore
+    }
+    const files = (await fs.readdir(BACKUP_DIR).catch(() => []))
+      .filter((f) => f.endsWith('.json'))
+      .sort((a, b) => {
+        try {
+          return fsSync.statSync(path.join(BACKUP_DIR, b)).mtimeMs - fsSync.statSync(path.join(BACKUP_DIR, a)).mtimeMs;
+        } catch {
+          return 0;
+        }
+      });
+    for (const f of files) {
+      try {
+        const buf = await fs.readFile(path.join(BACKUP_DIR, f), 'utf8');
+        await tryLoadBuffer(buf);
+        await saveState(); // 用当前 saveState（原子写+写锁）写回
+        console.warn(`State recovered from backup ${f}${reason ? ` (${reason})` : ''}`);
+        return true;
+      } catch {
+        /* try next */
+      }
+    }
+    return false;
+  };
+
   try {
     const raw = await fs.readFile(DATA_FILE, 'utf8');
-    let parsed = null;
+    let loadedFrom = 'state.json';
     try {
-      parsed = JSON.parse(raw);
+      await tryLoadBuffer(raw);
     } catch (parseError) {
       const start = raw.indexOf('{');
       const end = raw.lastIndexOf('}');
       if (start !== -1 && end > start) {
         const sliced = raw.slice(start, end + 1);
         try {
-          parsed = JSON.parse(sliced);
+          await tryLoadBuffer(sliced);
           console.warn('State file contained extra content; recovered by truncating to last closing brace.');
           try {
             await fs.mkdir(BACKUP_DIR, { recursive: true });
@@ -848,32 +1071,53 @@ const loadState = async () => {
             );
           } catch {}
           await fs.writeFile(DATA_FILE, sliced, 'utf8');
+          loadedFrom = 'state.json (truncated)';
         } catch {
-          throw parseError;
+          // 截断修复失败，继续尝试从备份恢复
+          const ok = await tryRecoverFromBackups({ reason: 'truncate-failed', originalRaw: raw });
+          if (ok) loadedFrom = 'backup (truncate-failed)';
+          if (!ok) throw parseError;
         }
       } else {
-        throw parseError;
+        const ok = await tryRecoverFromBackups({ reason: 'parse-failed', originalRaw: raw });
+        if (ok) loadedFrom = 'backup (parse-failed)';
+        if (!ok) {
+          throw parseError;
+        }
       }
     }
-    if (parsed && typeof parsed === 'object') {
-      const migrated = migrateLegacyState(parsed) || parsed;
-      const projects = migrated.projects && typeof migrated.projects === 'object' ? migrated.projects : {};
-      const accounts = migrated.accounts && typeof migrated.accounts === 'object' ? migrated.accounts : {};
-      state = {
-        projects,
-        accounts,
-        merch: migrated.merch || undefined,
-      };
-    }
+    console.log(`State loaded: ${loadedFrom}`);
   } catch (error) {
     console.warn('Failed to load state file, using defaults.', error);
   }
   ensureMerchState();
   ensureAuditState();
+  ensureCheckinLogs();
+  await ensureDailyBackup().catch(() => {});
 };
 
 const saveState = async () => {
-  await fs.writeFile(DATA_FILE, JSON.stringify(state, null, 2), 'utf8');
+  // 统一串行写入，避免同进程并发写文件
+  stateWriteQueue = stateWriteQueue.then(async () => {
+    // 写入前校验：避免写出结构错误的 state（导致下次启动无法读取）
+    const candidate = state;
+    if (!validateStateShape(candidate)) {
+      throw new Error('Refuse to save invalid state shape');
+    }
+    const unlock = await acquireLock('state:write', { ttl: 15000, retry: 200, delay: 25 });
+    try {
+      const tmpFile = `${DATA_FILE}.tmp.${process.pid}.${Date.now()}`;
+      await fs.writeFile(tmpFile, JSON.stringify(state, null, 2), 'utf8');
+      await fs.rename(tmpFile, DATA_FILE);
+    } finally {
+      try {
+        await unlock();
+      } catch {
+        // ignore
+      }
+    }
+  });
+  return stateWriteQueue;
 };
 
 const createEmptyProject = ({ name, rows, cols }) => {
@@ -1121,12 +1365,16 @@ const assignTicketNumberToSeat = (project, seat, { force = false } = {}) => {
       seat.ticketSequenceValue = null;
       return;
     }
-    const nextValue = sequence.nextValue + 1;
-    if (nextValue > sequence.maxValue) {
-      throw new Error('票号流水已超出范围');
+    let nextValue = sequence.nextValue + 1;
+    let ticketNumber = formatSequenceTicketNumber(sequence, nextValue);
+    while (ticketNumber && isTicketDuplicate(project, ticketNumber, seatId(seat.row, seat.col))) {
+      nextValue += 1;
+      ticketNumber = formatSequenceTicketNumber(sequence, nextValue);
+      if (!ticketNumber || nextValue > sequence.maxValue) {
+        throw new Error('票号流水已超出范围');
+      }
     }
     sequence.nextValue = nextValue;
-    const ticketNumber = formatSequenceTicketNumber(sequence, nextValue);
     seat.ticketNumber = ticketNumber;
     seat.ticketCode = ticketNumber;
     seat.ticketSequenceValue = nextValue;
@@ -1513,11 +1761,24 @@ app.delete('/api/merch/products/:productId', requireRole('admin'), async (req, r
   if (!product) {
     return res.status(404).json({ error: '商品不存在' });
   }
-  createStateBackup(`delete-product-${product.id}`).catch(() => {});
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'merch-product:delete',
+      detail: `删除商品「${product.name}」`,
+    })
+  ) {
+    return;
+  }
+  const backupFilename = await backupAndRespondUndo(`delete-product-${product.id}`);
   await deleteMerchImageFile(product.imagePath);
   delete state.merch.products[req.params.productId];
   await saveState();
-  res.json({ ok: true });
+  appendAudit({
+    action: 'merch-product:delete',
+    actor: req.session?.username || 'admin',
+    detail: `删除商品 ${product.id}`,
+  });
+  res.json({ ok: true, undo: backupFilename ? { backupFilename } : null });
 });
 
 app.get('/api/merch/modes', optionalSession, (_req, res) => {
@@ -1573,13 +1834,26 @@ app.delete('/api/merch/modes/:modeId', requireRole('admin'), async (req, res) =>
   if (!mode) {
     return res.status(404).json({ error: '结账模式不存在' });
   }
-  createStateBackup(`delete-mode-${mode.id}`).catch(() => {});
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'merch-mode:delete',
+      detail: `删除结账模式「${mode.name}」`,
+    })
+  ) {
+    return;
+  }
+  const backupFilename = await backupAndRespondUndo(`delete-mode-${mode.id}`);
   delete state.merch.checkoutModes[req.params.modeId];
   if (!Object.keys(state.merch.checkoutModes).length) {
     await ensureMerchState();
   }
   await saveState();
-  res.json({ ok: true });
+  appendAudit({
+    action: 'merch-mode:delete',
+    actor: req.session?.username || 'admin',
+    detail: `删除结账模式 ${mode.id}`,
+  });
+  res.json({ ok: true, undo: backupFilename ? { backupFilename } : null });
 });
 
 app.get('/api/merch/orders', requireRole('admin'), (req, res) => {
@@ -1660,28 +1934,296 @@ const normalizeOrderItems = (items = []) => {
   });
 };
 
+const normalizeVoucherCode = (raw) => {
+  if (typeof raw !== 'string') return '';
+  return raw.trim().toUpperCase();
+};
+
+const requireConfirmFlag = (req, res) => {
+  if (req.body && req.body.confirm === true) return true;
+  res.status(400).json({ error: '该操作需要二次确认', code: 'CONFIRM_REQUIRED' });
+  return false;
+};
+
+const pushVoucherHistory = (voucher, entry) => {
+  if (!voucher || typeof voucher !== 'object') return;
+  if (!Array.isArray(voucher.history)) voucher.history = [];
+  voucher.history.unshift(entry);
+  if (voucher.history.length > 50) voucher.history.length = 50;
+};
+
+const generateVoucherCode = () => {
+  // 便于打印/扫码：仅使用大写字母与数字（去掉易混淆字符）
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const bytes = crypto.randomBytes(8);
+  let body = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    body += alphabet[bytes[i] % alphabet.length];
+  }
+  const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+  return `PS${stamp}${body}`; // 例：PS251203XXXXXXXX
+};
+
+const buildMerchPresaleSummary = () => {
+  // 以“销售记录（订单）”为准，确保删除/清空订单后统计会自动回退
+  ensureMerchState();
+  const byProduct = new Map();
+  (state.merch.orders || []).forEach((order) => {
+    if (!order || typeof order !== 'object') return;
+    if (order.orderType !== 'presale') return;
+    if (order.status && order.status !== 'active') return;
+    const items = Array.isArray(order.items) ? order.items : [];
+    const isRedeemed = Boolean(order.redeemedAt);
+    items.forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const productId = item.productId ? String(item.productId) : '';
+      if (!productId) return;
+      const qty = Math.max(0, Math.floor(Number(item.quantity) || 0));
+      if (!qty) return;
+      const current = byProduct.get(productId) || {
+        productId,
+        name: item.name || '',
+        unitPrice: Number(item.unitPrice || 0) || 0,
+        issuedQty: 0,
+        redeemedQty: 0,
+      };
+      current.issuedQty += qty;
+      if (isRedeemed) current.redeemedQty += qty;
+      if (!current.name && item.name) current.name = item.name;
+      if (!current.unitPrice && item.unitPrice) current.unitPrice = Number(item.unitPrice || 0) || 0;
+      byProduct.set(productId, current);
+    });
+  });
+
+  const rows = Array.from(byProduct.values()).map((row) => {
+    const product = state.merch.products?.[row.productId];
+    const name = product?.name || row.name || row.productId;
+    const unitPrice = Number(product?.price ?? row.unitPrice ?? 0) || 0;
+    const outstandingQty = Math.max(0, row.issuedQty - row.redeemedQty);
+    return {
+      productId: row.productId,
+      name,
+      unitPrice: Math.round(unitPrice * 100) / 100,
+      issuedQty: row.issuedQty,
+      redeemedQty: row.redeemedQty,
+      outstandingQty,
+    };
+  });
+
+  rows.sort((a, b) => {
+    if (b.outstandingQty !== a.outstandingQty) return b.outstandingQty - a.outstandingQty;
+    return String(a.name).localeCompare(String(b.name));
+  });
+  return rows;
+};
+
 app.post('/api/merch/orders', requireSalesOrAdmin, async (req, res) => {
   ensureMerchState();
-  const { items, checkoutModeId, note, paymentMethod } = req.body || {};
+  const { items, checkoutModeId, note, paymentMethod, orderType, voucherCode } = req.body || {};
   if (!Array.isArray(items) || !items.length) {
     return res.status(400).json({ error: '请选择至少一件商品' });
   }
-  const parsedItems = [];
-  for (const entry of items) {
-    if (!entry || typeof entry !== 'object') continue;
-    const product = state.merch.products[entry.productId];
-    if (!product || product.enabled === false) {
-      return res.status(400).json({ error: '存在无效商品' });
+  const normalizedOrderType = orderType === 'presale' ? 'presale' : 'stock';
+
+  if (normalizedOrderType === 'presale') {
+    const code = normalizeVoucherCode(voucherCode);
+    if (!code) {
+      return res.status(400).json({ error: '预售订单需要扫描预购券条码', code: 'VOUCHER_REQUIRED' });
     }
-    const quantity = Math.max(1, Math.floor(Number(entry.quantity) || 0));
-    if (product.stock < quantity) {
-      return res.status(400).json({ error: `商品「${product.name}」库存不足` });
+    // 全局唯一：优先 Redis SETNX 预占用，避免多实例同码并发签发
+    await ensureRedis();
+    let reservedInRedis = false;
+    if (redisAvailable && redisClient) {
+      try {
+        const ok = await redisClient.set(`merch:voucher:${code}`, 'issued', { NX: true });
+        reservedInRedis = Boolean(ok);
+        if (!reservedInRedis) {
+          return res.status(409).json({
+            error: '该预购券已签发或已核销，无法重复使用',
+            code: 'VOUCHER_EXISTS',
+          });
+        }
+      } catch {
+        // ignore redis failures, fall back to state check + lock
+      }
     }
-    parsedItems.push({ product, quantity });
+    let unlockVoucher = null;
+    try {
+      unlockVoucher = await acquireLock(`merch:voucher:${code}`);
+    } catch {
+      if (reservedInRedis && redisAvailable && redisClient) {
+        try {
+          await redisClient.del(`merch:voucher:${code}`);
+        } catch {
+          // ignore
+        }
+      }
+      return res.status(429).json({ error: '当前签发过于频繁，请稍后重试', code: 'BUSY' });
+    }
+    try {
+      if (state.merch.vouchers[code]) {
+        const existing = state.merch.vouchers[code];
+        return res.status(409).json({
+          error: '该预购券已签发或已核销，无法重复使用',
+          code: 'VOUCHER_EXISTS',
+          voucher: {
+            code: existing.code,
+            status: existing.status,
+            createdAt: existing.createdAt,
+            redeemedAt: existing.redeemedAt || null,
+          },
+        });
+      }
+
+      const parsedItems = [];
+      for (const entry of items) {
+        if (!entry || typeof entry !== 'object') continue;
+        const product = state.merch.products[entry.productId];
+        if (!product || product.enabled === false) {
+          return res.status(400).json({ error: '存在无效商品' });
+        }
+        const quantity = Math.max(1, Math.floor(Number(entry.quantity) || 0));
+        parsedItems.push({ product, quantity });
+      }
+      if (!parsedItems.length) {
+        return res.status(400).json({ error: '未找到有效商品' });
+      }
+
+      const mode = checkoutModeId ? state.merch.checkoutModes[checkoutModeId] : null;
+      if (checkoutModeId && !mode) {
+        return res.status(400).json({ error: '结账模式不存在' });
+      }
+
+      let totalBefore = 0;
+      const orderItems = parsedItems.map(({ product, quantity }) => {
+        const subtotal = Math.round(product.price * quantity * 100) / 100;
+        totalBefore += subtotal;
+        return {
+          productId: product.id,
+          name: product.name,
+          quantity,
+          unitPrice: product.price,
+          subtotal,
+          imagePath: product.imagePath || null,
+        };
+      });
+      totalBefore = Math.round(totalBefore * 100) / 100;
+      const { totalAfter, discount } = applyCheckoutModeToTotal(mode, totalBefore);
+
+	      const order = {
+	        id: uuidv4(),
+	        orderNumber: await nextMerchOrderNumber(),
+	        orderType: 'presale',
+	        status: 'active',
+	        voucherCode: code,
+	        redeemedAt: null,
+	        redeemedBy: null,
+	        items: orderItems,
+        checkoutModeId: mode ? mode.id : null,
+        checkoutModeName: mode ? mode.name : '原价',
+        discount,
+        totalBefore,
+        totalAfter: Math.round(totalAfter * 100) / 100,
+        handledBy: req.session?.username || 'unknown',
+        paymentMethod: typeof paymentMethod === 'string' && paymentMethod.trim() ? paymentMethod.trim() : '现金',
+        note: typeof note === 'string' ? note.trim() : '',
+        createdAt: Date.now(),
+      };
+
+      const voucher = {
+        code,
+        status: 'issued',
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        createdAt: order.createdAt,
+        createdBy: order.handledBy,
+        redeemedAt: null,
+        redeemedBy: null,
+        items: orderItems,
+        checkoutModeName: order.checkoutModeName,
+        paymentMethod: order.paymentMethod,
+        note: order.note,
+        totalBefore: order.totalBefore,
+        totalAfter: order.totalAfter,
+        discount: order.discount,
+      };
+
+      state.merch.orders.push(order);
+      if (state.merch.orders.length > 2000) {
+        state.merch.orders = state.merch.orders.slice(-2000);
+      }
+      state.merch.vouchers[code] = voucher;
+      appendAudit({
+        action: 'merch-voucher:issue',
+        actor: req.session?.username || 'unknown',
+        detail: `签发预购券 ${code} -> 订单 ${order.id}`,
+      });
+      await saveState();
+      return res.json({ order, voucher });
+    } finally {
+      try {
+        if (unlockVoucher) unlockVoucher();
+      } catch {
+        // ignore
+      }
+    }
   }
-  if (!parsedItems.length) {
-    return res.status(400).json({ error: '未找到有效商品' });
+
+  const productIds = items
+    .map((entry) => (entry && typeof entry === 'object' ? entry.productId : null))
+    .filter(Boolean)
+    .map((id) => String(id))
+    .sort();
+  const locks = [];
+  try {
+    for (const productId of productIds) {
+      // 逐个加锁，避免跨终端并发扣库存导致超卖
+      // 单实例下也能起到“排队等待”的效果
+      // 如果锁拿不到，提示稍后重试
+      const unlock = await acquireLock(`merch:stock:${productId}`);
+      locks.push(unlock);
+    }
+  } catch (error) {
+    while (locks.length) {
+      try {
+        locks.pop()();
+      } catch {
+        // ignore
+      }
+    }
+    return res.status(429).json({ error: '当前下单过于频繁，请稍后重试', code: 'BUSY' });
   }
+  try {
+    const parsedItems = [];
+    const shortages = [];
+    for (const entry of items) {
+      if (!entry || typeof entry !== 'object') continue;
+      const product = state.merch.products[entry.productId];
+      if (!product || product.enabled === false) {
+        return res.status(400).json({ error: '存在无效商品' });
+      }
+      const quantity = Math.max(1, Math.floor(Number(entry.quantity) || 0));
+      if (product.stock < quantity) {
+        shortages.push({
+          productId: product.id,
+          name: product.name,
+          requested: quantity,
+          stock: product.stock,
+        });
+        continue;
+      }
+      parsedItems.push({ product, quantity });
+    }
+    if (shortages.length) {
+      return res.status(409).json({
+        error: '库存不足，请刷新商品后重试',
+        code: 'OUT_OF_STOCK',
+        shortages,
+      });
+    }
+    if (!parsedItems.length) {
+      return res.status(400).json({ error: '未找到有效商品' });
+    }
 
   const mode = checkoutModeId ? state.merch.checkoutModes[checkoutModeId] : null;
   if (checkoutModeId && !mode) {
@@ -1709,11 +2251,14 @@ app.post('/api/merch/orders', requireSalesOrAdmin, async (req, res) => {
     product.updatedAt = Date.now();
   });
 
-  const order = {
-    id: uuidv4(),
-    orderNumber: await nextMerchOrderNumber(),
-    items: orderItems,
-    checkoutModeId: mode ? mode.id : null,
+	  const order = {
+	    id: uuidv4(),
+	    orderNumber: await nextMerchOrderNumber(),
+	    orderType: 'stock',
+	    status: 'active',
+	    voucherCode: null,
+	    items: orderItems,
+	    checkoutModeId: mode ? mode.id : null,
     checkoutModeName: mode ? mode.name : '原价',
     discount,
     totalBefore,
@@ -1727,9 +2272,483 @@ app.post('/api/merch/orders', requireSalesOrAdmin, async (req, res) => {
   if (state.merch.orders.length > 2000) {
     state.merch.orders = state.merch.orders.slice(-2000);
   }
-  appendAudit({ action: 'merch-order:create', actor: req.session?.username || 'unknown', detail: `创建文创订单 ${order.id}` });
-  await saveState();
-  res.json({ order });
+    appendAudit({ action: 'merch-order:create', actor: req.session?.username || 'unknown', detail: `创建文创订单 ${order.id}` });
+    await saveState();
+    res.json({ order });
+  } finally {
+    while (locks.length) {
+      try {
+        locks.pop()();
+      } catch {
+        // ignore
+      }
+    }
+  }
+});
+
+app.get('/api/merch/vouchers/:code', requireSalesOrAdmin, (req, res) => {
+  ensureMerchState();
+  const code = normalizeVoucherCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '预购券码无效' });
+  const voucher = state.merch.vouchers[code];
+  if (!voucher) {
+    return res.status(404).json({ error: '未找到该预购券', code: 'VOUCHER_NOT_FOUND' });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({ voucher });
+});
+
+app.post('/api/merch/vouchers/:code/redeem', requireSalesOrAdmin, async (req, res) => {
+  ensureMerchState();
+  const code = normalizeVoucherCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '预购券码无效' });
+  const voucher = state.merch.vouchers[code];
+  if (!voucher) {
+    return res.status(404).json({ error: '未找到该预购券', code: 'VOUCHER_NOT_FOUND' });
+  }
+  if (voucher.status && voucher.status !== 'issued' && voucher.status !== 'redeemed') {
+    if (voucher.status === 'replaced') {
+      return res.status(409).json({
+        error: '该预购券已换码，请使用新券码核销',
+        code: 'VOUCHER_REPLACED',
+        replacedBy: voucher.replacedBy || null,
+      });
+    }
+    if (voucher.status === 'voided') {
+      return res.status(409).json({ error: '该预购券已作废，无法核销', code: 'VOUCHER_VOIDED' });
+    }
+    if (voucher.status === 'refunded') {
+      return res.status(409).json({ error: '该预购券已退款，无法核销', code: 'VOUCHER_REFUNDED' });
+    }
+  }
+  if (voucher.status === 'redeemed') {
+    return res.status(409).json({
+      error: '该预购券已核销，无法重复使用',
+      code: 'ALREADY_REDEEMED',
+      redeemedAt: voucher.redeemedAt,
+      redeemedBy: voucher.redeemedBy,
+    });
+  }
+  const items = Array.isArray(voucher.items) ? voucher.items : [];
+  if (!items.length) {
+    return res.status(400).json({ error: '预购券商品信息缺失' });
+  }
+  const productIds = items
+    .map((entry) => (entry && typeof entry === 'object' ? entry.productId : null))
+    .filter(Boolean)
+    .map((id) => String(id))
+    .sort();
+  const locks = [];
+  try {
+    for (const productId of productIds) {
+      const unlock = await acquireLock(`merch:stock:${productId}`);
+      locks.push(unlock);
+    }
+  } catch {
+    while (locks.length) {
+      try {
+        locks.pop()();
+      } catch {
+        // ignore
+      }
+    }
+    return res.status(429).json({ error: '当前核销过于频繁，请稍后重试', code: 'BUSY' });
+  }
+  try {
+    const shortages = [];
+    const parsedItems = [];
+    for (const entry of items) {
+      if (!entry || typeof entry !== 'object') continue;
+      const product = state.merch.products[entry.productId];
+      if (!product || product.enabled === false) {
+        return res.status(400).json({ error: '存在无效商品，无法核销' });
+      }
+      const quantity = Math.max(1, Math.floor(Number(entry.quantity) || 0));
+      if (product.stock < quantity) {
+        shortages.push({
+          productId: product.id,
+          name: product.name,
+          requested: quantity,
+          stock: product.stock,
+        });
+        continue;
+      }
+      parsedItems.push({ product, quantity });
+    }
+    if (shortages.length) {
+      return res.status(409).json({
+        error: '库存不足，暂无法核销',
+        code: 'OUT_OF_STOCK',
+        shortages,
+      });
+    }
+
+    parsedItems.forEach(({ product, quantity }) => {
+      product.stock -= quantity;
+      if (product.stock < 0) product.stock = 0;
+      product.updatedAt = Date.now();
+    });
+
+    voucher.status = 'redeemed';
+    voucher.redeemedAt = Date.now();
+    voucher.redeemedBy = req.session?.username || 'unknown';
+    pushVoucherHistory(voucher, {
+      at: voucher.redeemedAt,
+      actor: voucher.redeemedBy,
+      action: 'redeem',
+    });
+    // 同步回写到订单记录：预售签发与核销只算一条销售记录，但包含两次操作信息
+    const targetOrder = state.merch.orders.find((o) => o && o.id === voucher.orderId);
+    if (targetOrder && targetOrder.orderType === 'presale') {
+      targetOrder.redeemedAt = voucher.redeemedAt;
+      targetOrder.redeemedBy = voucher.redeemedBy;
+    }
+    state.merch.voucherRedemptions.push({
+      id: uuidv4(),
+      code,
+      orderId: voucher.orderId,
+      createdAt: voucher.redeemedAt,
+      redeemedBy: voucher.redeemedBy,
+      items: voucher.items,
+    });
+    if (state.merch.voucherRedemptions.length > 5000) {
+      state.merch.voucherRedemptions = state.merch.voucherRedemptions.slice(-5000);
+    }
+    appendAudit({
+      action: 'merch-voucher:redeem',
+      actor: req.session?.username || 'unknown',
+      detail: `核销预购券 ${code} -> 订单 ${voucher.orderId}`,
+    });
+    await saveState();
+    return res.json({ ok: true, voucher });
+  } finally {
+    while (locks.length) {
+      try {
+        locks.pop()();
+      } catch {
+        // ignore
+      }
+    }
+  }
+});
+
+app.post('/api/merch/vouchers/:code/undo-redeem', requireRole('admin'), async (req, res) => {
+  ensureMerchState();
+  if (!requireConfirmFlag(req, res)) return;
+  const code = normalizeVoucherCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '预购券码无效' });
+  const voucher = state.merch.vouchers[code];
+  if (!voucher) {
+    return res.status(404).json({ error: '未找到该预购券', code: 'VOUCHER_NOT_FOUND' });
+  }
+  if (voucher.status !== 'redeemed') {
+    return res.status(409).json({ error: '该预购券未核销，无需撤销', code: 'NOT_REDEEMED' });
+  }
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+
+  let unlockVoucher = null;
+  try {
+    unlockVoucher = await acquireLock(`merch:voucher:${code}`);
+  } catch {
+    return res.status(429).json({ error: '当前操作过于频繁，请稍后重试', code: 'BUSY' });
+  }
+
+  const items = Array.isArray(voucher.items) ? voucher.items : [];
+  const productIds = items
+    .map((entry) => (entry && typeof entry === 'object' ? entry.productId : null))
+    .filter(Boolean)
+    .map((id) => String(id))
+    .sort();
+  const locks = [];
+  try {
+    for (const productId of productIds) {
+      const unlock = await acquireLock(`merch:stock:${productId}`);
+      locks.push(unlock);
+    }
+  } catch {
+    while (locks.length) {
+      try {
+        locks.pop()();
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      if (unlockVoucher) unlockVoucher();
+    } catch {
+      // ignore
+    }
+    return res.status(429).json({ error: '当前操作过于频繁，请稍后重试', code: 'BUSY' });
+  }
+
+  try {
+    for (const entry of items) {
+      if (!entry || typeof entry !== 'object') continue;
+      const product = state.merch.products[entry.productId];
+      if (!product) continue;
+      const quantity = Math.max(1, Math.floor(Number(entry.quantity) || 0));
+      product.stock += quantity;
+      product.updatedAt = Date.now();
+    }
+
+    voucher.status = 'issued';
+    voucher.redeemedAt = null;
+    voucher.redeemedBy = null;
+    const actor = req.session?.username || 'admin';
+    pushVoucherHistory(voucher, { at: Date.now(), actor, action: 'undo-redeem', reason });
+
+    const targetOrder = state.merch.orders.find((o) => o && o.id === voucher.orderId);
+    if (targetOrder && targetOrder.orderType === 'presale') {
+      targetOrder.redeemedAt = null;
+      targetOrder.redeemedBy = null;
+    }
+
+    // 标记最近一次核销记录已撤销（保留审计痕迹）
+    if (Array.isArray(state.merch.voucherRedemptions)) {
+      const latest = [...state.merch.voucherRedemptions]
+        .reverse()
+        .find((r) => r && r.code === code && !r.undoneAt);
+      if (latest) {
+        latest.undoneAt = Date.now();
+        latest.undoneBy = actor;
+        latest.undoneReason = reason;
+      }
+    }
+
+    appendAudit({
+      action: 'merch-voucher:undo-redeem',
+      actor,
+      detail: `撤销核销预购券 ${code}${reason ? `（${reason}）` : ''}`,
+    });
+    await saveState();
+    return res.json({ ok: true, voucher });
+  } finally {
+    while (locks.length) {
+      try {
+        locks.pop()();
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      if (unlockVoucher) unlockVoucher();
+    } catch {
+      // ignore
+    }
+  }
+});
+
+app.post('/api/merch/vouchers/:code/void', requireRole('admin'), async (req, res) => {
+  ensureMerchState();
+  if (!requireConfirmFlag(req, res)) return;
+  const code = normalizeVoucherCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '预购券码无效' });
+  const voucher = state.merch.vouchers[code];
+  if (!voucher) {
+    return res.status(404).json({ error: '未找到该预购券', code: 'VOUCHER_NOT_FOUND' });
+  }
+  if (voucher.status === 'redeemed') {
+    return res.status(409).json({ error: '该预购券已核销，无法作废（请先撤销核销）', code: 'ALREADY_REDEEMED' });
+  }
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  let unlockVoucher = null;
+  try {
+    unlockVoucher = await acquireLock(`merch:voucher:${code}`);
+  } catch {
+    return res.status(429).json({ error: '当前操作过于频繁，请稍后重试', code: 'BUSY' });
+  }
+  try {
+    const actor = req.session?.username || 'admin';
+    voucher.status = 'voided';
+    voucher.voidedAt = Date.now();
+    voucher.voidedBy = actor;
+    voucher.voidedReason = reason;
+    pushVoucherHistory(voucher, { at: voucher.voidedAt, actor, action: 'void', reason });
+
+    const targetOrder = state.merch.orders.find((o) => o && o.id === voucher.orderId);
+    if (targetOrder && targetOrder.orderType === 'presale') {
+      targetOrder.status = 'voided';
+      targetOrder.voidedAt = voucher.voidedAt;
+      targetOrder.voidedBy = actor;
+      targetOrder.voidedReason = reason;
+    }
+
+    appendAudit({
+      action: 'merch-voucher:void',
+      actor,
+      detail: `作废预购券 ${code}${reason ? `（${reason}）` : ''}`,
+    });
+    await saveState();
+    return res.json({ ok: true, voucher });
+  } finally {
+    try {
+      if (unlockVoucher) unlockVoucher();
+    } catch {
+      // ignore
+    }
+  }
+});
+
+app.post('/api/merch/vouchers/:code/refund', requireRole('admin'), async (req, res) => {
+  ensureMerchState();
+  if (!requireConfirmFlag(req, res)) return;
+  const code = normalizeVoucherCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '预购券码无效' });
+  const voucher = state.merch.vouchers[code];
+  if (!voucher) {
+    return res.status(404).json({ error: '未找到该预购券', code: 'VOUCHER_NOT_FOUND' });
+  }
+  if (voucher.status === 'redeemed') {
+    return res.status(409).json({ error: '该预购券已核销，无法退款（请先撤销核销）', code: 'ALREADY_REDEEMED' });
+  }
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  let unlockVoucher = null;
+  try {
+    unlockVoucher = await acquireLock(`merch:voucher:${code}`);
+  } catch {
+    return res.status(429).json({ error: '当前操作过于频繁，请稍后重试', code: 'BUSY' });
+  }
+  try {
+    const actor = req.session?.username || 'admin';
+    voucher.status = 'refunded';
+    voucher.refundedAt = Date.now();
+    voucher.refundedBy = actor;
+    voucher.refundReason = reason;
+    pushVoucherHistory(voucher, { at: voucher.refundedAt, actor, action: 'refund', reason });
+
+    const targetOrder = state.merch.orders.find((o) => o && o.id === voucher.orderId);
+    if (targetOrder && targetOrder.orderType === 'presale') {
+      targetOrder.status = 'refunded';
+      targetOrder.refundedAt = voucher.refundedAt;
+      targetOrder.refundedBy = actor;
+      targetOrder.refundReason = reason;
+    }
+
+    appendAudit({
+      action: 'merch-voucher:refund',
+      actor,
+      detail: `退款预购券 ${code}${reason ? `（${reason}）` : ''}`,
+    });
+    await saveState();
+    return res.json({ ok: true, voucher });
+  } finally {
+    try {
+      if (unlockVoucher) unlockVoucher();
+    } catch {
+      // ignore
+    }
+  }
+});
+
+app.post('/api/merch/vouchers/:code/replace', requireRole('admin'), async (req, res) => {
+  ensureMerchState();
+  if (!requireConfirmFlag(req, res)) return;
+  const code = normalizeVoucherCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '预购券码无效' });
+  const voucher = state.merch.vouchers[code];
+  if (!voucher) {
+    return res.status(404).json({ error: '未找到该预购券', code: 'VOUCHER_NOT_FOUND' });
+  }
+  if (voucher.status === 'redeemed') {
+    return res
+      .status(409)
+      .json({ error: '该预购券已核销，无法换码（请先撤销核销）', code: 'ALREADY_REDEEMED' });
+  }
+  if (voucher.status === 'voided' || voucher.status === 'refunded') {
+    return res.status(409).json({ error: '该预购券已作废/退款，无法换码', code: 'NOT_ALLOWED' });
+  }
+
+  const requested = typeof req.body?.newCode === 'string' ? req.body.newCode : '';
+  const newCode = normalizeVoucherCode(requested) || generateVoucherCode();
+  if (newCode === code) return res.status(400).json({ error: '新券码不能与旧券码相同' });
+  if (state.merch.vouchers[newCode]) {
+    return res.status(409).json({ error: '新券码已存在，请更换', code: 'VOUCHER_EXISTS' });
+  }
+
+  // Redis 预占新码（多实例下避免并发重号）
+  await ensureRedis();
+  if (redisAvailable && redisClient) {
+    try {
+      const ok = await redisClient.set(`merch:voucher:${newCode}`, 'issued', { NX: true });
+      if (!ok) {
+        return res.status(409).json({ error: '新券码已被占用，请更换', code: 'VOUCHER_EXISTS' });
+      }
+    } catch {
+      // ignore: best-effort
+    }
+  }
+
+  const actor = req.session?.username || 'admin';
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+
+  const lockCodes = [code, newCode].sort();
+  const unlocks = [];
+  try {
+    for (const c of lockCodes) {
+      const unlock = await acquireLock(`merch:voucher:${c}`);
+      unlocks.push(unlock);
+    }
+  } catch {
+    while (unlocks.length) {
+      try {
+        unlocks.pop()();
+      } catch {
+        // ignore
+      }
+    }
+    return res.status(429).json({ error: '当前操作过于频繁，请稍后重试', code: 'BUSY' });
+  }
+
+  try {
+    const now = Date.now();
+    voucher.status = 'replaced';
+    voucher.replacedAt = now;
+    voucher.replacedByActor = actor;
+    voucher.replacedReason = reason;
+    voucher.replacedBy = newCode;
+    pushVoucherHistory(voucher, { at: now, actor, action: 'replace', newCode, reason });
+
+    const nextVoucher = {
+      ...voucher,
+      code: newCode,
+      status: 'issued',
+      createdAt: now,
+      createdBy: actor,
+      redeemedAt: null,
+      redeemedBy: null,
+      replacedFrom: code,
+      history: [],
+    };
+    pushVoucherHistory(nextVoucher, { at: now, actor, action: 'issue-replacement', replacedFrom: code, reason });
+    state.merch.vouchers[newCode] = nextVoucher;
+
+    const targetOrder = state.merch.orders.find((o) => o && o.id === voucher.orderId);
+    if (targetOrder && targetOrder.orderType === 'presale') {
+      targetOrder.voucherCode = newCode;
+    }
+
+    appendAudit({
+      action: 'merch-voucher:replace',
+      actor,
+      detail: `预购券换码 ${code} -> ${newCode}${reason ? `（${reason}）` : ''}`,
+    });
+    await saveState();
+    return res.json({ ok: true, voucher: nextVoucher, oldVoucher: voucher });
+  } finally {
+    while (unlocks.length) {
+      try {
+        unlocks.pop()();
+      } catch {
+        // ignore
+      }
+    }
+  }
+});
+
+app.get('/api/merch/presale/summary', requireRole('admin'), (_req, res) => {
+  const summary = buildMerchPresaleSummary();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ summary });
 });
 
 app.post('/api/merch/orders/manual', requireRole('admin'), async (req, res) => {
@@ -1748,12 +2767,14 @@ app.post('/api/merch/orders/manual', requireRole('admin'), async (req, res) => {
     typeof req.body?.handledBy === 'string' && req.body.handledBy.trim()
       ? req.body.handledBy.trim()
       : req.session?.username || 'admin';
-  const order = {
-    id: uuidv4(),
-    orderNumber: await nextMerchOrderNumber(),
-    items: orderItems,
-    checkoutModeId: mode ? mode.id : null,
-    checkoutModeName: mode ? mode.name : '原价',
+	  const order = {
+	    id: uuidv4(),
+	    orderNumber: await nextMerchOrderNumber(),
+	    orderType: 'stock',
+	    status: 'active',
+	    items: orderItems,
+	    checkoutModeId: mode ? mode.id : null,
+	    checkoutModeName: mode ? mode.name : '原价',
     discount,
     totalBefore,
     totalAfter: Math.round(totalAfter * 100) / 100,
@@ -1886,11 +2907,38 @@ app.delete('/api/merch/orders/:orderId', requireRole('admin'), async (req, res) 
   if (index === -1) {
     return res.status(404).json({ error: '记录不存在' });
   }
-  createStateBackup(`delete-order-${req.params.orderId}`).catch(() => {});
+  const removing = state.merch.orders[index];
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'merch-order:delete',
+      detail: `删除文创订单 ${req.params.orderId}`,
+    })
+  ) {
+    return;
+  }
+  const backupFilename = await backupAndRespondUndo(`delete-order-${req.params.orderId}`);
   state.merch.orders.splice(index, 1);
+  // 预售券订单删除时，同步删除对应预购券与核销记录，避免“无销售记录但仍可核销”
+  if (removing && removing.orderType === 'presale' && removing.voucherCode) {
+    const code = normalizeVoucherCode(removing.voucherCode);
+    if (code && state.merch.vouchers?.[code]) {
+      delete state.merch.vouchers[code];
+    }
+    if (Array.isArray(state.merch.voucherRedemptions)) {
+      state.merch.voucherRedemptions = state.merch.voucherRedemptions.filter((r) => r.code !== code);
+    }
+    await ensureRedis();
+    if (redisAvailable && redisClient) {
+      try {
+        await redisClient.del(`merch:voucher:${code}`);
+      } catch {
+        // ignore
+      }
+    }
+  }
   await saveState();
   appendAudit({ action: 'merch-order:delete', actor: req.session?.username || 'admin', detail: `删除订单 ${req.params.orderId}` });
-  res.json({ ok: true });
+  res.json({ ok: true, undo: backupFilename ? { backupFilename } : null });
 });
 
 app.get('/api/merch/orders/export', requireRole('admin'), (req, res) => {
@@ -2448,12 +3496,35 @@ app.post('/api/merch/orders/clear', requireRole('admin'), async (req, res) => {
   if (!state.merch.orders.length) {
     return res.json({ ok: true, cleared: 0 });
   }
-  createStateBackup('clear-orders').catch(() => {});
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'merch-order:clear',
+      detail: `清空文创订单（${state.merch.orders.length} 条）`,
+    })
+  ) {
+    return;
+  }
+  const backupFilename = await backupAndRespondUndo('clear-orders');
   const cleared = state.merch.orders.length;
   state.merch.orders = [];
+  // 清空订单时同步清空预售券数据（统计以订单为准；并避免残留券继续核销）
+  state.merch.vouchers = {};
+  state.merch.voucherRedemptions = [];
+  await ensureRedis();
+  if (redisAvailable && redisClient) {
+    try {
+      // best-effort：清空预售券保留集合，避免残留券阻止后续签发
+      const keys = await redisClient.keys('merch:voucher:*').catch(() => []);
+      if (Array.isArray(keys) && keys.length) {
+        await redisClient.del(keys);
+      }
+    } catch {
+      // ignore
+    }
+  }
   await saveState();
   appendAudit({ action: 'merch-order:clear', actor: req.session?.username || 'admin', detail: `清除订单 ${cleared} 条` });
-  res.json({ ok: true, cleared });
+  res.json({ ok: true, cleared, undo: backupFilename ? { backupFilename } : null });
 });
 
 app.post('/api/checkins/seat', requireRole('admin'), async (req, res) => {
@@ -2462,6 +3533,14 @@ app.post('/api/checkins/seat', requireRole('admin'), async (req, res) => {
     return res.status(400).json({ error: '请输入票号' });
   }
   const normalized = ticketNumber.trim();
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'checkin:admin-edit',
+      detail: `管理端修改检票状态 ${normalized}（${action === 'clear' ? '清除' : '标记已检'}）`,
+    })
+  ) {
+    return;
+  }
   let lock;
   try {
     lock = await acquireLock(`checkin:admin:${normalized.toUpperCase()}`);
@@ -2492,6 +3571,7 @@ app.post('/api/checkins/seat', requireRole('admin'), async (req, res) => {
       return res.status(404).json({ error: '未找到该票号' });
     }
     ensureSeatCheckinState(foundSeat);
+    const backupFilename = await backupAndRespondUndo(`checkin-admin-${action || 'edit'}-${normalized}`);
     if (action === 'clear') {
       resetSeatCheckin(foundSeat);
       appendAudit({
@@ -2509,7 +3589,11 @@ app.post('/api/checkins/seat', requireRole('admin'), async (req, res) => {
       });
       await saveState();
       broadcastProject(foundProject.id);
-      return res.json({ ok: true, seat: buildSeatCheckinPayload(foundProject, foundSeat) });
+      return res.json({
+        ok: true,
+        seat: buildSeatCheckinPayload(foundProject, foundSeat),
+        undo: backupFilename ? { backupFilename } : null,
+      });
     }
     // action === 'checked'
     foundSeat.checkedInAt = Date.now();
@@ -2529,7 +3613,11 @@ app.post('/api/checkins/seat', requireRole('admin'), async (req, res) => {
     });
     await saveState();
     broadcastProject(foundProject.id);
-    res.json({ ok: true, seat: buildSeatCheckinPayload(foundProject, foundSeat) });
+    res.json({
+      ok: true,
+      seat: buildSeatCheckinPayload(foundProject, foundSeat),
+      undo: backupFilename ? { backupFilename } : null,
+    });
   } finally {
     lock();
   }
@@ -2574,11 +3662,29 @@ app.delete('/api/accounts/:username', requireRole('admin'), (req, res) => {
   if (currentSession && normalizeUsername(currentSession.username) === normalizeUsername(targetUsername)) {
     return res.status(400).json({ error: '无法删除当前登录账号' });
   }
-  createStateBackup(`delete-account-${normalizeUsername(targetUsername)}`).catch(() => {});
-  removeAccount(targetUsername);
-  saveState().catch((err) => console.error('Failed to save state after delete account', err));
-  broadcastAdminUpdate();
-  res.json({ ok: true });
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'account:delete',
+      detail: `删除账号「${account.username}」（角色：${account.role}）`,
+    })
+  ) {
+    return;
+  }
+  backupAndRespondUndo(`delete-account-${normalizeUsername(targetUsername)}`)
+    .then((backupFilename) => {
+      removeAccount(targetUsername);
+      saveState().catch((err) => console.error('Failed to save state after delete account', err));
+      broadcastAdminUpdate();
+      appendAudit({
+        action: 'account:delete',
+        actor: req.session?.username || 'admin',
+        detail: `删除账号 ${normalizeUsername(targetUsername)}`,
+      });
+      res.json({ ok: true, undo: backupFilename ? { backupFilename } : null });
+    })
+    .catch(() => {
+      res.status(500).json({ error: '备份失败，已取消删除操作' });
+    });
 });
 
 app.get('/api/projects', optionalSession, (_req, res) => {
@@ -2625,13 +3731,32 @@ app.post('/api/projects', requireRole('admin'), (req, res) => {
 
 app.delete('/api/projects/:projectId', requireRole('admin'), (req, res) => {
   const { projectId } = req.params;
-  if (!state.projects[projectId]) {
+  const project = state.projects[projectId];
+  if (!project) {
     return res.status(404).json({ error: '项目不存在' });
   }
-  createStateBackup(`delete-project-${projectId}`).catch(() => {});
-  delete state.projects[projectId];
-  saveState().catch((err) => console.error('Failed to save state after delete project', err));
-  res.json({ ok: true });
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'project:delete',
+      detail: `删除项目「${project.name}」(${projectId})`,
+    })
+  ) {
+    return;
+  }
+  backupAndRespondUndo(`delete-project-${projectId}`)
+    .then((backupFilename) => {
+      delete state.projects[projectId];
+      saveState().catch((err) => console.error('Failed to save state after delete project', err));
+      appendAudit({
+        action: 'project:delete',
+        actor: req.session?.username || 'admin',
+        detail: `删除项目 ${projectId}`,
+      });
+      res.json({ ok: true, undo: backupFilename ? { backupFilename } : null });
+    })
+    .catch(() => {
+      res.status(500).json({ error: '备份失败，已取消删除操作' });
+    });
 });
 
 const serializeProject = (project) => {
@@ -2781,6 +3906,176 @@ app.get('/api/projects/:projectId/export/png', requireRole('admin'), async (req,
   }
 });
 
+app.get('/api/projects/:projectId/ticket-discounts', requireRole('admin'), (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) return res.status(404).json({ error: '项目不存在' });
+  ensureProjectMetadata(project);
+  const rules = Object.values(project.ticketDiscountRules || {}).filter(Boolean);
+  rules.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ rules });
+});
+
+app.post('/api/projects/:projectId/ticket-discounts', requireRole('admin'), async (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) return res.status(404).json({ error: '项目不存在' });
+  ensureProjectMetadata(project);
+  const payload = req.body || {};
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+  if (!name) return res.status(400).json({ error: '请填写规则名称' });
+  const ticketCount = Math.max(1, Math.floor(Number(payload.ticketCount) || 0));
+  const discountRate = Number(payload.discountRate);
+  if (!Number.isFinite(discountRate) || discountRate <= 0 || discountRate > 10) {
+    return res.status(400).json({ error: '折扣（几折）无效，应在 0~10 之间' });
+  }
+  const allowedPrices = normalizeAllowedPrices(payload.allowedPrices);
+  const now = Date.now();
+  const id = payload.id && project.ticketDiscountRules[payload.id] ? String(payload.id) : uuidv4();
+  const existing = project.ticketDiscountRules[id];
+  const rule = {
+    id,
+    name,
+    ticketCount,
+    discountRate: Math.round(discountRate * 100) / 100,
+    allowedPrices,
+    enabled: payload.enabled === false ? false : true,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+  project.ticketDiscountRules[id] = rule;
+  appendAudit({
+    action: existing ? 'ticket-discount:update' : 'ticket-discount:create',
+    actor: req.session?.username || 'admin',
+    detail: `${existing ? '更新' : '新增'}票务折扣规则 ${rule.name}（${rule.id}）`,
+  });
+  await saveState();
+  res.json({ rule });
+});
+
+app.delete('/api/projects/:projectId/ticket-discounts/:ruleId', requireRole('admin'), async (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) return res.status(404).json({ error: '项目不存在' });
+  ensureProjectMetadata(project);
+  const ruleId = String(req.params.ruleId);
+  const existing = project.ticketDiscountRules?.[ruleId];
+  if (!existing) return res.status(404).json({ error: '规则不存在' });
+  if (Object.values(project.ticketCoupons || {}).some((c) => c && c.ruleId === ruleId && c.status === 'issued')) {
+    return res.status(409).json({ error: '仍存在未使用的优惠券，无法删除该规则' });
+  }
+  delete project.ticketDiscountRules[ruleId];
+  appendAudit({
+    action: 'ticket-discount:delete',
+    actor: req.session?.username || 'admin',
+    detail: `删除票务折扣规则 ${existing.name}（${ruleId}）`,
+  });
+  await saveState();
+  res.json({ ok: true });
+});
+
+app.get('/api/projects/:projectId/ticket-coupons/:code', requireSalesOrAdmin, (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) return res.status(404).json({ error: '项目不存在' });
+  ensureProjectMetadata(project);
+  const code = normalizeCouponCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '优惠券码无效' });
+  const coupon = project.ticketCoupons?.[code];
+  if (!coupon) return res.status(404).json({ error: '未找到该优惠券', code: 'COUPON_NOT_FOUND' });
+  const rule = coupon.ruleId ? project.ticketDiscountRules?.[coupon.ruleId] : null;
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ coupon, rule });
+});
+
+app.get('/api/projects/:projectId/ticket-coupons', requireRole('admin'), (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) return res.status(404).json({ error: '项目不存在' });
+  ensureProjectMetadata(project);
+  const q = typeof req.query?.q === 'string' ? req.query.q.trim().toUpperCase() : '';
+  const status = typeof req.query?.status === 'string' ? req.query.status.trim() : '';
+  const coupons = Object.values(project.ticketCoupons || {})
+    .filter(Boolean)
+    .filter((c) => (q ? String(c.code).includes(q) : true))
+    .filter((c) => (status ? c.status === status : true))
+    .sort((a, b) => (b.issuedAt || 0) - (a.issuedAt || 0));
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ coupons });
+});
+
+app.post('/api/projects/:projectId/ticket-coupons/issue', requireRole('admin'), async (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) return res.status(404).json({ error: '项目不存在' });
+  ensureProjectMetadata(project);
+  const { ruleId, quantity } = req.body || {};
+  const rule = project.ticketDiscountRules?.[String(ruleId)];
+  if (!rule || rule.enabled === false) return res.status(400).json({ error: '折扣规则不存在或已停用' });
+  const count = Math.max(1, Math.min(200, Math.floor(Number(quantity) || 1)));
+  const issued = [];
+  for (let i = 0; i < count; i += 1) {
+    let code = normalizeCouponCode(req.body?.codes?.[i] || '') || '';
+    if (!code) {
+      let attempts = 0;
+      do {
+        code = generateTicketCouponCode();
+        attempts += 1;
+      } while (project.ticketCoupons[code] && attempts < 10);
+    }
+    if (project.ticketCoupons[code]) {
+      return res.status(409).json({ error: `券码已存在：${code}` });
+    }
+    const coupon = {
+      code,
+      ruleId: rule.id,
+      ruleName: rule.name,
+      ticketCount: rule.ticketCount,
+      discountRate: rule.discountRate,
+      allowedPrices: rule.allowedPrices || null,
+      remaining: rule.ticketCount,
+      status: 'issued',
+      issuedAt: Date.now(),
+      issuedBy: req.session?.username || 'admin',
+      usedAt: null,
+      usedBy: null,
+      usedSeats: [],
+      voidedAt: null,
+      voidedBy: null,
+      voidedReason: null,
+    };
+    project.ticketCoupons[code] = coupon;
+    issued.push(coupon);
+  }
+  appendAudit({
+    action: 'ticket-coupon:issue',
+    actor: req.session?.username || 'admin',
+    detail: `签发优惠券 ${issued.length} 张（规则：${rule.name}）`,
+  });
+  await saveState();
+  res.json({ coupons: issued });
+});
+
+app.post('/api/projects/:projectId/ticket-coupons/:code/void', requireRole('admin'), async (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) return res.status(404).json({ error: '项目不存在' });
+  ensureProjectMetadata(project);
+  if (!requireConfirmFlag(req, res)) return;
+  const code = normalizeCouponCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '优惠券码无效' });
+  const coupon = project.ticketCoupons?.[code];
+  if (!coupon) return res.status(404).json({ error: '优惠券不存在' });
+  if (coupon.status === 'used') {
+    return res.status(409).json({ error: '该优惠券已使用，无法作废' });
+  }
+  coupon.status = 'voided';
+  coupon.voidedAt = Date.now();
+  coupon.voidedBy = req.session?.username || 'admin';
+  coupon.voidedReason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  appendAudit({
+    action: 'ticket-coupon:void',
+    actor: req.session?.username || 'admin',
+    detail: `作废优惠券 ${code}${coupon.voidedReason ? `（${coupon.voidedReason}）` : ''}`,
+  });
+  await saveState();
+  res.json({ ok: true, coupon });
+});
+
 app.get('/api/projects/:projectId/checkin/stats', optionalSession, (req, res) => {
   const project = state.projects[req.params.projectId];
   if (!project) {
@@ -2804,25 +4099,26 @@ app.post('/api/projects/:projectId/checkin', requireSalesOrAdmin, async (req, re
   try {
     lock = await acquireLock(`checkin:${project.id}:${ticketCode.toUpperCase()}`);
   } catch (error) {
-    return res.status(503).json({ error: '系统繁忙，请重试' });
+    return res.status(429).json({ error: '检票请求过多，请稍后重试或减少并发', code: 'BUSY' });
   }
   const matches = findSeatsByTicketCode(project, ticketCode);
   try {
     if (!matches.length) {
-      return res.status(404).json({ error: '未找到该票号' });
+      return res.status(404).json({ error: '未找到该票号', code: 'NOT_FOUND' });
     }
     if (matches.length > 1) {
-      return res.status(409).json({ error: '票号重复，请先处理重复票号后再检票' });
+      return res.status(409).json({ error: '票号重复，请先处理重复票号后再检票', code: 'DUPLICATE_TICKET' });
     }
     const seat = matches[0];
     ensureSeatCheckinState(seat);
     const payload = buildSeatCheckinPayload(project, seat);
     if (seat.status !== 'sold') {
-      return res.status(400).json({ error: '该票尚未签发或已作废，无法检票', seat: payload });
+      return res.status(400).json({ error: '该票尚未签发或已作废，无法检票', code: 'NOT_ISSUED', seat: payload });
     }
     if (seat.checkedInAt) {
       return res.status(409).json({
         error: '已检票',
+        code: 'ALREADY_CHECKED_IN',
         seat: payload,
         checkedInAt: seat.checkedInAt,
         checkedInBy: seat.checkedInBy,
@@ -2870,7 +4166,7 @@ app.post('/api/projects/:projectId/checkin/batch', requireSalesOrAdmin, async (r
     try {
       lock = await acquireLock(`checkin:${project.id}:${ticketCode.toUpperCase()}`);
     } catch (error) {
-      results.push({ ticketCode, ok: false, error: '系统繁忙，请重试' });
+      results.push({ ticketCode, ok: false, error: '检票请求过多，请稍后重试或减少并发' });
       continue;
     }
     try {
@@ -3012,6 +4308,15 @@ app.post('/api/backups/restore', requireRole('admin'), async (req, res) => {
   if (!filename || typeof filename !== 'string') {
     return res.status(400).json({ error: '请提供 filename' });
   }
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'backup:restore',
+      detail: `恢复备份 ${filename}（当前状态将被覆盖）`,
+    })
+  ) {
+    return;
+  }
+  const undoBackup = await backupAndRespondUndo(`before-restore-${filename}`);
   const filePath = path.join(BACKUP_DIR, filename);
   try {
     const raw = await fs.readFile(filePath, 'utf8');
@@ -3025,10 +4330,22 @@ app.post('/api/backups/restore', requireRole('admin'), async (req, res) => {
     Object.values(state.projects).forEach(ensureProjectMetadata);
     await saveState();
     appendAudit({ action: 'backup:restore', actor: req.session?.username || 'admin', detail: `恢复备份 ${filename}` });
-    res.json({ ok: true });
+    res.json({ ok: true, undo: undoBackup ? { backupFilename: undoBackup } : null });
   } catch (error) {
     res.status(400).json({ error: error.message || '恢复失败' });
   }
+});
+
+app.get('/api/backups/:filename', requireRole('admin'), async (req, res) => {
+  const { filename } = req.params || {};
+  if (!filename || typeof filename !== 'string' || filename.includes('..')) {
+    return res.status(400).json({ error: '非法文件名' });
+  }
+  const filePath = path.join(BACKUP_DIR, filename);
+  if (!fsSync.existsSync(filePath)) {
+    return res.status(404).json({ error: '文件不存在' });
+  }
+  res.download(filePath, filename);
 });
 
 app.get('/logs', requireRole('admin'), (req, res) => {
@@ -3051,6 +4368,15 @@ app.post('/api/projects/:projectId/import', requireRole('admin'), async (req, re
     return res.status(404).json({ error: '项目不存在' });
   }
   ensureProjectMetadata(project);
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'project:import',
+      detail: `导入座位数据到项目「${project.name}」(${project.id})`,
+    })
+  ) {
+    return;
+  }
+  const backupFilename = await backupAndRespondUndo(`import-project-${project.id}`);
   const body = req.body || {};
   const payload = (body && typeof body === 'object' && (body.project || body)) || {};
   if (!payload || typeof payload !== 'object') {
@@ -3155,7 +4481,7 @@ app.post('/api/projects/:projectId/import', requireRole('admin'), async (req, re
   project.updatedAt = Date.now();
   await saveState();
   broadcastProject(project.id);
-  res.json({ project: serializeProject(project) });
+  res.json({ project: serializeProject(project), undo: backupFilename ? { backupFilename } : null });
 });
 
 app.put('/api/projects/:projectId', requireRole('admin'), async (req, res) => {
@@ -3169,6 +4495,23 @@ app.put('/api/projects/:projectId', requireRole('admin'), async (req, res) => {
     project.name = name.trim();
   }
   if (Array.isArray(seatUpdates)) {
+    const isDangerousBulk =
+      seatUpdates.length >= 20 ||
+      Boolean(req.body?.bulk) ||
+      seatUpdates.some((s) => s && typeof s === 'object' && (s.status || s.ticketNumber || s.ticketSequenceValue));
+    let backupFilename = null;
+    if (isDangerousBulk) {
+      if (
+        !requireDangerConfirm(req, res, {
+          action: 'project:bulk-edit',
+          detail: `批量修改座位（${seatUpdates.length} 个）项目「${project.name}」(${project.id})`,
+        })
+      ) {
+        return;
+      }
+      backupFilename = await backupAndRespondUndo(`bulk-edit-project-${project.id}`);
+      res.locals.undoBackupFilename = backupFilename;
+    }
     const normalized = sanitizeSeatsUpdate(project, seatUpdates);
     const affectedRows = new Set();
     Object.entries(normalized).forEach(([id, payload]) => {
@@ -3249,7 +4592,10 @@ app.put('/api/projects/:projectId', requireRole('admin'), async (req, res) => {
   project.updatedAt = Date.now();
   await saveState();
   broadcastProject(project.id);
-  res.json({ project: serializeProject(project) });
+  res.json({
+    project: serializeProject(project),
+    undo: res.locals.undoBackupFilename ? { backupFilename: res.locals.undoBackupFilename } : null,
+  });
 });
 
 app.post('/api/projects/:projectId/ticketing', requireRole('admin'), async (req, res) => {
@@ -3257,6 +4603,15 @@ app.post('/api/projects/:projectId/ticketing', requireRole('admin'), async (req,
   if (!project) {
     return res.status(404).json({ error: '项目不存在' });
   }
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'project:ticketing:update',
+      detail: `重新生成票号配置（项目「${project.name}」）`,
+    })
+  ) {
+    return;
+  }
+  const backupFilename = await backupAndRespondUndo(`ticketing-update-${project.id}`);
   const config = req.body || {};
   try {
     if (!config.mode) {
@@ -3270,7 +4625,7 @@ app.post('/api/projects/:projectId/ticketing', requireRole('admin'), async (req,
   project.updatedAt = Date.now();
   await saveState();
   broadcastProject(project.id);
-  res.json({ project: serializeProject(project) });
+  res.json({ project: serializeProject(project), undo: backupFilename ? { backupFilename } : null });
 });
 
 app.post('/api/projects/:projectId/ticketing/regenerate', requireRole('admin'), async (req, res) => {
@@ -3278,6 +4633,15 @@ app.post('/api/projects/:projectId/ticketing/regenerate', requireRole('admin'), 
   if (!project) {
     return res.status(404).json({ error: '项目不存在' });
   }
+  if (
+    !requireDangerConfirm(req, res, {
+      action: 'project:ticketing:regenerate',
+      detail: `重算全部票号（项目「${project.name}」）`,
+    })
+  ) {
+    return;
+  }
+  const backupFilename = await backupAndRespondUndo(`ticketing-regenerate-${project.id}`);
   try {
     let config = project.ticketing;
     if (project.ticketing?.mode === 'sequence' && project.ticketing.sequence) {
@@ -3297,7 +4661,7 @@ app.post('/api/projects/:projectId/ticketing/regenerate', requireRole('admin'), 
   project.updatedAt = Date.now();
   await saveState();
   broadcastProject(project.id);
-  res.json({ project: serializeProject(project) });
+  res.json({ project: serializeProject(project), undo: backupFilename ? { backupFilename } : null });
 });
 
 app.patch('/api/projects/:projectId/seats/:seatId', requireRole('admin'), async (req, res) => {
@@ -3310,7 +4674,7 @@ app.patch('/api/projects/:projectId/seats/:seatId', requireRole('admin'), async 
     return res.status(404).json({ error: '座位不存在' });
   }
   const lock = await acquireLock(`seat:${project.id}:${req.params.seatId}`);
-  const { status, price, ticketNumber } = req.body || {};
+  const { status, price, ticketNumber, checkinStatus } = req.body || {};
   try {
     if (price !== undefined) {
       if (price === null || price === '') {
@@ -3370,6 +4734,19 @@ app.patch('/api/projects/:projectId/seats/:seatId', requireRole('admin'), async 
         seat.ticketCode = null;
         seat.ticketSequenceValue = null;
         resetSeatCheckin(seat);
+      }
+    }
+    if (checkinStatus) {
+      if (checkinStatus === 'checked') {
+        if (seat.status !== 'sold') {
+          seat.status = 'sold';
+          seat.issuedAt = seat.issuedAt || Date.now();
+        }
+        seat.checkedInAt = Date.now();
+        seat.checkedInBy = req.session?.username || 'admin';
+      } else if (checkinStatus === 'unchecked') {
+        seat.checkedInAt = null;
+        seat.checkedInBy = null;
       }
     }
     assignSeatLabels(project);
@@ -3446,6 +4823,16 @@ io.on('connection', (socket) => {
     if (!seat) {
       return ack({ ok: false, message: '座位不存在' });
     }
+    let unlock = null;
+    try {
+      unlock = await acquireLock(`seat:${projectId}:${requestedId}`, { ttl: 4000, retry: 20, delay: 40 });
+    } catch {
+      return ack({ ok: false, code: 'BUSY', message: '座位操作繁忙，请稍后重试' });
+    }
+    try {
+    if (seat.status === 'locked' && seat.lockExpiresAt && seat.lockExpiresAt <= Date.now()) {
+      releaseSeatLock(seat);
+    }
     if (seat.status === 'sold') {
       return ack({ ok: false, message: '座位已签发' });
     }
@@ -3460,7 +4847,20 @@ io.on('connection', (socket) => {
       }
     }
     if (seat.status === 'locked' && seat.lockedBy && seat.lockedBy !== socket.id) {
-      return ack({ ok: false, message: '座位已被其他终端锁定' });
+      const now = Date.now();
+      const retryAfterMs = Math.max(500, (seat.lockExpiresAt || now) - now);
+      const lockedBy = getSocketSummary(seat.lockedBy);
+      return ack({
+        ok: false,
+        code: 'LOCKED',
+        message: lockedBy?.username
+          ? `座位已被 ${lockedBy.username} 锁定`
+          : '座位已被其他终端锁定',
+        lockedBy,
+        lockExpiresAt: seat.lockExpiresAt || null,
+        serverTime: now,
+        retryAfterMs,
+      });
     }
     seat.status = 'locked';
     seat.lockedBy = socket.id;
@@ -3468,7 +4868,19 @@ io.on('connection', (socket) => {
     project.updatedAt = Date.now();
     await saveState();
     broadcastProject(project.id);
-    return ack({ ok: true });
+    return ack({
+      ok: true,
+      lockedBy: getSocketSummary(socket.id),
+      lockExpiresAt: seat.lockExpiresAt,
+      serverTime: Date.now(),
+    });
+    } finally {
+      try {
+        if (unlock) await unlock();
+      } catch {
+        // ignore
+      }
+    }
   });
 
   socket.on('unlock-seat', async ({ projectId, seatId: requestedId }, ack = () => {}) => {
@@ -3480,6 +4892,13 @@ io.on('connection', (socket) => {
     if (!seat) {
       return ack({ ok: false, message: '座位不存在' });
     }
+    let unlock = null;
+    try {
+      unlock = await acquireLock(`seat:${projectId}:${requestedId}`, { ttl: 4000, retry: 20, delay: 40 });
+    } catch {
+      return ack({ ok: false, code: 'BUSY', message: '座位操作繁忙，请稍后重试' });
+    }
+    try {
     if (seat.lockedBy !== socket.id) {
       return ack({ ok: false, message: '没有权限释放该座位' });
     }
@@ -3491,34 +4910,112 @@ io.on('connection', (socket) => {
     await saveState();
     broadcastProject(project.id);
     return ack({ ok: true });
+    } finally {
+      try {
+        if (unlock) await unlock();
+      } catch {
+        // ignore
+      }
+    }
   });
 
-  socket.on('seat:issue', async ({ projectId, seatId: requestedId, ticketCode }, ack = () => {}) => {
+  socket.on('seat:issue', async ({ projectId, seatId: requestedId, ticketCode, couponCode }, ack = () => {}) => {
     const project = state.projects[projectId];
     if (!project) {
       return ack({ ok: false, message: '项目不存在' });
     }
+    ensureProjectMetadata(project);
     const seat = project.seats[requestedId];
     if (!seat) {
       return ack({ ok: false, message: '座位不存在' });
     }
+    let unlock = null;
+    try {
+      unlock = await acquireLock(`seat:${projectId}:${requestedId}`, { ttl: 6000, retry: 20, delay: 40 });
+    } catch {
+      return ack({ ok: false, code: 'BUSY', message: '签发繁忙，请稍后重试' });
+    }
+    try {
     if (!ticketCode || ticketCode !== seat.ticketCode) {
       return ack({ ok: false, message: '票码不匹配' });
     }
     if (seat.lockedBy !== socket.id) {
       return ack({ ok: false, message: '当前终端未锁定该座位' });
     }
+    const now = Date.now();
+    let appliedCoupon = null;
+    const normalizedCoupon = normalizeCouponCode(couponCode || '');
+    if (normalizedCoupon) {
+      const coupon = project.ticketCoupons?.[normalizedCoupon];
+      if (!coupon) {
+        return ack({ ok: false, code: 'COUPON_NOT_FOUND', message: '未找到该优惠券' });
+      }
+      if (coupon.status !== 'issued' || coupon.remaining <= 0) {
+        return ack({ ok: false, code: 'COUPON_EXHAUSTED', message: '该优惠券已用尽或不可用' });
+      }
+      if (coupon.allowedPrices && Array.isArray(coupon.allowedPrices)) {
+        const price = Number(seat.price);
+        const allowed = coupon.allowedPrices.some((p) => Number(p) === price);
+        if (!allowed) {
+          return ack({ ok: false, code: 'COUPON_PRICE_NOT_ALLOWED', message: '该座位票价不支持使用此优惠券' });
+        }
+      }
+      coupon.remaining -= 1;
+      if (!Array.isArray(coupon.usedSeats)) coupon.usedSeats = [];
+      coupon.usedSeats.push({ seatId: requestedId, at: now, ticketNumber: seat.ticketNumber || null });
+      if (coupon.remaining <= 0) {
+        coupon.status = 'used';
+        coupon.usedAt = now;
+        coupon.usedBy = socket.data.session?.username || 'unknown';
+      }
+      appliedCoupon = {
+        code: coupon.code,
+        remaining: coupon.remaining,
+        status: coupon.status,
+        discountRate: coupon.discountRate,
+      };
+    }
+
+    const basePrice = Number(seat.price);
+    const multiplier = normalizedCoupon ? formatDiscountMultiplier(appliedCoupon.discountRate) : 1;
+    const soldPrice = Number.isFinite(basePrice) ? Math.round(basePrice * multiplier * 100) / 100 : null;
+
     seat.status = 'sold';
     seat.lockedBy = null;
     seat.lockExpiresAt = null;
-    seat.issuedAt = Date.now();
+    seat.issuedAt = now;
+    seat.soldAt = now;
+    seat.soldBy = socket.data.session?.username || 'unknown';
+    seat.soldPrice = soldPrice;
+    seat.soldDiscount = normalizedCoupon
+      ? {
+          type: 'coupon',
+          code: normalizedCoupon,
+          discountRate: appliedCoupon.discountRate,
+          originalPrice: Number.isFinite(basePrice) ? basePrice : null,
+        }
+      : null;
     if (!seat.seatLabel) {
       assignSeatLabels(project, new Set([seat.row]));
     }
     project.updatedAt = Date.now();
     await saveState();
     broadcastProject(project.id);
-    return ack({ ok: true });
+    if (appliedCoupon) {
+      appendAudit({
+        action: 'ticket-coupon:use',
+        actor: socket.data.session?.username || 'unknown',
+        detail: `使用优惠券 ${appliedCoupon.code}（剩余 ${appliedCoupon.remaining}）`,
+      });
+    }
+    return ack({ ok: true, coupon: appliedCoupon, seat: serializeSeatForCheckin(seat) });
+    } finally {
+      try {
+        if (unlock) await unlock();
+      } catch {
+        // ignore
+      }
+    }
   });
 
   socket.on('request-ticket-code', async ({ projectId, seatId: requestedId }, ack = () => {}) => {
@@ -3530,6 +5027,13 @@ io.on('connection', (socket) => {
     if (!seat) {
       return ack({ ok: false, message: '座位不存在' });
     }
+    let unlock = null;
+    try {
+      unlock = await acquireLock(`seat:${projectId}:${requestedId}`, { ttl: 4000, retry: 20, delay: 40 });
+    } catch {
+      return ack({ ok: false, code: 'BUSY', message: '座位操作繁忙，请稍后重试' });
+    }
+    try {
     if (!seat.ticketNumber) {
       try {
         assignTicketNumberToSeat(project, seat, { force: true });
@@ -3546,6 +5050,13 @@ io.on('connection', (socket) => {
       () => null
     );
     return ack({ ok: true, ticketCode: seat.ticketCode || seat.ticketNumber, qrDataUrl });
+    } finally {
+      try {
+        if (unlock) await unlock();
+      } catch {
+        // ignore
+      }
+    }
   });
 
   socket.on('disconnect', async () => {
@@ -3576,6 +5087,9 @@ io.on('connection', (socket) => {
   await ensureMerchImageDir();
   await ensureLockDir();
   await ensureRedis();
+  if (REDIS_URL && !redisAvailable) {
+    console.warn('Redis 未就绪：将回退为本机文件锁/本地序列（仅适合单机/单实例部署）。');
+  }
   await loadState();
   await ensureDefaultAccounts();
   Object.values(state.projects).forEach((project) => {
@@ -3592,11 +5106,25 @@ io.on('connection', (socket) => {
   });
   ensureCheckinLogs();
   await saveState();
-  server.listen(PORT, HOST, () => {
-    if (isHttps) {
-      console.log(`Server listening on https://${HOST}:${PORT} (cert: ${CERT_CERT_PATH})`);
-    } else {
-      console.log(`Server listening on http://${HOST}:${PORT} (no cert found, fallback HTTP)`);
-    }
-  });
+  const startListen = (port, tries = 0) => {
+    server
+      .listen(port, () => {
+        if (isHttps) {
+          console.log(`Server listening on https://localhost:${port}`);
+        } else {
+          console.log(`Server listening on http://localhost:${port} (no cert found, fallback HTTP)`);
+        }
+      })
+      .on('error', (err) => {
+        if ((err.code === 'EADDRINUSE' || err.code === 'EPERM') && tries < 5) {
+          const nextPort = port + 1;
+          console.warn(`Port ${port} unavailable (${err.code}), trying ${nextPort}...`);
+          startListen(nextPort, tries + 1);
+        } else {
+          console.error('Failed to start server:', err);
+          process.exit(1);
+        }
+      });
+  };
+  startListen(Number(PORT));
 })();

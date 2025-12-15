@@ -105,6 +105,12 @@
       }
       .cli-command:focus { outline: none; }
       .cli-command::placeholder { color: #4b5563; }
+      .cli-header-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+      }
       @media (max-width: 640px) {
         .cli-shell { min-height: 70vh; }
         .cli-prompt { min-width: 48px; }
@@ -115,7 +121,7 @@
     <div class="cli-shell">
       <div class="cli-header-bar">
         <span>CLI · 学校汇演票务系统</span>
-        <div style="margin-left:auto; display:flex; gap:0.75rem; align-items:center;">
+        <div class="cli-header-actions">
           <a class="cli-link" href="/cli-wiki.html" target="_blank" rel="noreferrer">帮助</a>
           <a class="cli-link" href="/index.html">首页</a>
         </div>
