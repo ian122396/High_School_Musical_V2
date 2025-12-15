@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const os = require('os');
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 const DATA_FILE = path.join(__dirname, 'data', 'state.json');
 const LOCK_DIR = path.join(__dirname, 'data', 'locks');
 const REDIS_URL = process.env.REDIS_URL || process.env.REDIS;
@@ -5108,11 +5109,11 @@ io.on('connection', (socket) => {
   await saveState();
   const startListen = (port, tries = 0) => {
     server
-      .listen(port, () => {
+      .listen(port, HOST, () => {
         if (isHttps) {
-          console.log(`Server listening on https://localhost:${port}`);
+          console.log(`Server listening on https://${HOST}:${port}`);
         } else {
-          console.log(`Server listening on http://localhost:${port} (no cert found, fallback HTTP)`);
+          console.log(`Server listening on http://${HOST}:${port} (no cert found, fallback HTTP)`);
         }
       })
       .on('error', (err) => {
