@@ -5504,13 +5504,14 @@ io.on('connection', (socket) => {
   });
   ensureCheckinLogs();
   await saveState();
+  const HOST = process.env.HOST || '0.0.0.0';
   const startListen = (port, tries = 0) => {
     server
-      .listen(port, () => {
+      .listen(port, HOST, () => {
         if (isHttps) {
-          console.log(`Server listening on https://localhost:${port}`);
+          console.log(`Server listening on https://${HOST}:${port}`);
         } else {
-          console.log(`Server listening on http://localhost:${port} (no cert found, fallback HTTP)`);
+          console.log(`Server listening on http://${HOST}:${port} (no cert found, fallback HTTP)`);
         }
       })
       .on('error', (err) => {
