@@ -127,11 +127,12 @@
           <aside class="panel module-sales-sidebar">
             <h2>已选座位</h2>
             <ul id="selected-list" class="selected-list"></ul>
-            <div class="selected-summary">
-              <span>数量：<strong id="selected-count">0</strong></span>
-              <span>合计：<strong id="selected-total">¥0</strong></span>
-            </div>
+	            <div class="selected-summary">
+	              <span>数量：<strong id="selected-count">0</strong></span>
+	              <span>合计：<strong id="selected-total">¥0</strong></span>
+	            </div>
 	            <div class="selected-actions">
+	              <button class="button button--primary" id="btn-ticket-checkout" type="button" disabled>整单结账 / 签发</button>
 	              <button class="button button--link" id="btn-clear-selected" type="button">清空已选座位</button>
 	            </div>
 	            <div class="panel panel--subtle" id="ticket-coupon-panel">
@@ -148,6 +149,7 @@
 	              </label>
 	              <div class="panel__actions">
 	                <button class="button" id="btn-lookup-ticket-coupon" type="button">查询</button>
+	                <button class="button button--secondary" id="btn-redeem-ticket-coupon" type="button" disabled>核销 1 次</button>
 	                <button class="button button--secondary" id="btn-clear-ticket-coupon" type="button">清除</button>
 	              </div>
 	              <div class="hint" id="ticket-coupon-info">未使用优惠券。</div>
@@ -182,7 +184,7 @@
                 </p>
               </div>
               <p class="hint">
-                * 点击列表中的“签发”按钮后开始扫描票面上的二维码，正确匹配后座位将自动标记为“已签发”。
+                * 推荐使用上方“整单结账 / 签发”完成出票；如需逐张核对票码，可使用下方扫码/手动输入方式。
               </p>
               <div class="form">
                 <label>
@@ -316,6 +318,38 @@
             <button class="button button--secondary" id="btn-voucher-close" type="button">关闭</button>
           </div>
         </div>
+      </dialog>
+
+      <dialog id="dialog-ticket-checkout" class="modal">
+        <form id="ticket-checkout-form" class="modal__content" method="dialog">
+          <h3>票务整单结账 / 签发</h3>
+          <p class="hint">将对当前终端锁定的全部座位一次性签发；优惠券按规则自动应用到部分座位。</p>
+          <div class="panel panel--subtle">
+            <div class="form">
+              <div class="form-inline">
+                <span>座位数：<strong id="ticket-checkout-count">0</strong></span>
+                <span>未折扣：<strong id="ticket-checkout-original">¥0.00</strong></span>
+                <span>优惠：<strong id="ticket-checkout-discount">-¥0.00</strong></span>
+                <span>应付：<strong id="ticket-checkout-total">¥0.00</strong></span>
+              </div>
+              <div class="hint" id="ticket-checkout-coupon">优惠券：未使用</div>
+            </div>
+          </div>
+          <label class="form-inline">
+            <span>是否使用优惠券</span>
+            <input id="ticket-use-coupon" type="checkbox" />
+            <span class="hint">勾选后会在结账时核销优惠券次数，并进入扫码签发流程。</span>
+          </label>
+          <label>
+            支付方式
+            <select id="ticket-payment-method"></select>
+          </label>
+          <div class="modal__actions">
+            <button class="button button--primary" id="btn-confirm-ticket-checkout" type="submit">确认结账</button>
+            <button class="button button--secondary" id="btn-cancel-ticket-checkout" type="button">取消</button>
+          </div>
+          <p class="status-message" id="ticket-checkout-status"></p>
+        </form>
       </dialog>
 
 	      <section

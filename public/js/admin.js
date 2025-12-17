@@ -185,6 +185,7 @@ const ticketRuleTableBody = document.querySelector('#ticket-rule-table tbody');
 const ticketRuleStatus = document.getElementById('ticket-rule-status');
 const selectTicketRule = document.getElementById('select-ticket-rule');
 const inputTicketCouponQuantity = document.getElementById('input-ticket-coupon-quantity');
+const inputTicketCouponCodes = document.getElementById('input-ticket-coupon-codes');
 const btnIssueTicketCoupons = document.getElementById('btn-issue-ticket-coupons');
 const inputTicketCouponSearch = document.getElementById('input-ticket-coupon-search');
 const selectTicketCouponStatus = document.getElementById('select-ticket-coupon-status');
@@ -3691,20 +3692,35 @@ if (btnIssueTicketCoupons) {
       showToast('请选择折扣规则', 'error');
       return;
     }
-    const quantity = Math.max(1, Math.min(200, Math.floor(Number(inputTicketCouponQuantity?.value) || 1)));
+    const rawCodes = String(inputTicketCouponCodes?.value || '');
+    const codes = rawCodes
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const uniqueCodes = Array.from(new Set(codes.map((c) => c.toUpperCase())));
+    if (codes.length !== uniqueCodes.length) {
+      showToast('自定义券码存在重复行，已自动去重', 'info');
+    }
+    let quantity = Math.max(1, Math.min(200, Math.floor(Number(inputTicketCouponQuantity?.value) || 1)));
+    if (uniqueCodes.length > quantity) {
+      quantity = Math.min(200, uniqueCodes.length);
+      if (inputTicketCouponQuantity) inputTicketCouponQuantity.value = String(quantity);
+    }
     btnIssueTicketCoupons.disabled = true;
     setTicketCouponStatus('正在签发...');
     try {
       const resp = await authFetch(`/api/projects/${activeProject.id}/ticket-coupons/issue`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ruleId, quantity }),
+        body: JSON.stringify({ ruleId, quantity, codes: uniqueCodes }),
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.error || '签发失败');
-      const codes = (data.coupons || []).map((c) => c.code).join('，');
+      const issuedCodes = (data.coupons || []).map((c) => c.code);
+      const preview = issuedCodes.slice(0, 12).join('，');
       showToast(`已签发 ${data.coupons?.length || 0} 张`, 'success');
-      setTicketCouponStatus(codes ? `已签发：${codes}` : '签发完成。');
+      setTicketCouponStatus(preview ? `已签发：${preview}${issuedCodes.length > 12 ? '…' : ''}` : '签发完成。');
+      if (inputTicketCouponCodes) inputTicketCouponCodes.value = '';
       await loadTicketCoupons();
     } catch (error) {
       setTicketCouponStatus(error.message, true);

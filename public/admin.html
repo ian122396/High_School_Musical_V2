@@ -844,7 +844,7 @@
 	      </form>
 	    </dialog>
 
-	    <dialog id="dialog-ticket-coupons" class="modal">
+	    <dialog id="dialog-ticket-coupons" class="modal modal--wide">
 	      <div class="modal__content">
 	        <div class="panel__heading">
 	          <div>
@@ -889,6 +889,15 @@
 	              <label>
 	                批量签发数量（1~200）
 	                <input id="input-ticket-coupon-quantity" type="number" min="1" max="200" value="1" />
+	              </label>
+	              <label>
+	                自定义券码（可选，每行一个；留空自动生成）
+	                <textarea
+	                  id="input-ticket-coupon-codes"
+	                  rows="5"
+	                  placeholder="示例：\nBYYS-20251201-001\nBYYS-20251201-002"
+	                ></textarea>
+	                <span class="hint">若填写 N 行，将优先使用这 N 个券码；数量大于 N 时其余自动生成补齐。</span>
 	              </label>
 	              <button class="button button--primary" id="btn-issue-ticket-coupons" type="button">签发</button>
 	            </div>

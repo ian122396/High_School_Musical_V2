@@ -182,7 +182,7 @@ a {
 }
 
 .account-manager-grid--ticket-coupons {
-  grid-template-columns: 1.05fr 0.95fr;
+  grid-template-columns: 1fr 1fr;
 }
 
 .divider {
@@ -235,6 +235,16 @@ input[type='password'] {
   border-radius: 8px;
   font-size: 1rem;
   transition: border 0.15s ease, box-shadow 0.15s ease;
+}
+
+textarea {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #cdd9ea;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 }
 
 input[type='text']:focus,
@@ -859,6 +869,17 @@ input[type='password']:focus {
   width: min(420px, 90vw);
 }
 
+.modal--wide {
+  width: min(1120px, 96vw);
+  max-height: 92vh;
+  overflow: hidden;
+}
+
+.modal--wide .modal__content {
+  max-height: 92vh;
+  overflow: auto;
+}
+
 .modal::backdrop {
   background: rgba(14, 28, 56, 0.35);
 }
@@ -1157,6 +1178,9 @@ input[type='password']:focus {
 @media (max-width: 900px) {
   .panel {
     padding: 1.2rem 1rem;
+  }
+  .account-manager-grid--ticket-coupons {
+    grid-template-columns: 1fr;
   }
   .form-inline {
     flex-direction: column;

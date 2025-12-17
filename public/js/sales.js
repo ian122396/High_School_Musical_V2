@@ -26,11 +26,25 @@ const autoSelectPrice = document.getElementById('auto-select-price');
 const autoSelectCount = document.getElementById('auto-select-count');
 const btnAutoSelect = document.getElementById('btn-auto-select');
 const btnClearSelected = document.getElementById('btn-clear-selected');
+const btnTicketCheckout = document.getElementById('btn-ticket-checkout');
 const inputTicketCoupon = document.getElementById('input-ticket-coupon');
 const btnScanTicketCoupon = document.getElementById('btn-scan-ticket-coupon');
 const btnLookupTicketCoupon = document.getElementById('btn-lookup-ticket-coupon');
+const btnRedeemTicketCoupon = document.getElementById('btn-redeem-ticket-coupon');
 const btnClearTicketCoupon = document.getElementById('btn-clear-ticket-coupon');
 const ticketCouponInfo = document.getElementById('ticket-coupon-info');
+const dialogTicketCheckout = document.getElementById('dialog-ticket-checkout');
+const ticketCheckoutForm = document.getElementById('ticket-checkout-form');
+const ticketCheckoutCount = document.getElementById('ticket-checkout-count');
+const ticketCheckoutOriginal = document.getElementById('ticket-checkout-original');
+const ticketCheckoutDiscount = document.getElementById('ticket-checkout-discount');
+const ticketCheckoutTotal = document.getElementById('ticket-checkout-total');
+const ticketCheckoutCoupon = document.getElementById('ticket-checkout-coupon');
+const ticketUseCoupon = document.getElementById('ticket-use-coupon');
+const ticketPaymentSelect = document.getElementById('ticket-payment-method');
+const btnConfirmTicketCheckout = document.getElementById('btn-confirm-ticket-checkout');
+const btnCancelTicketCheckout = document.getElementById('btn-cancel-ticket-checkout');
+const ticketCheckoutStatus = document.getElementById('ticket-checkout-status');
 const stageLabelEl = document.getElementById('sales-stage-label');
 const merchProductsContainer = document.getElementById('sales-merch-products');
 const merchCartList = document.getElementById('merch-cart-list');
@@ -242,11 +256,55 @@ if (merchCheckoutModeSelect) {
 }
 
 const authFetch = async (input, init = {}) => {
-  const finalInit = { ...init, credentials: 'same-origin' };
+  const { timeoutMs, ...rest } = init || {};
+  const finalInit = { ...rest, credentials: 'same-origin' };
   if (init && init.headers) {
     finalInit.headers = init.headers;
   }
-  const response = await fetch(input, finalInit);
+  const resolvedTimeoutMs = Number.isFinite(Number(timeoutMs))
+    ? Math.max(0, Number(timeoutMs))
+    : 12000;
+  const controller =
+    !finalInit.signal && typeof window !== 'undefined' && 'AbortController' in window
+      ? new AbortController()
+      : null;
+  if (controller) {
+    finalInit.signal = controller.signal;
+  }
+  const timeoutId =
+    controller && resolvedTimeoutMs
+      ? window.setTimeout(() => controller.abort(), resolvedTimeoutMs)
+      : null;
+  let response;
+  try {
+    response = await fetch(input, finalInit);
+  } catch (error) {
+    if (timeoutId) window.clearTimeout(timeoutId);
+    const isFile = window.location.protocol === 'file:';
+    const host = window.location.host || 'localhost:3000';
+    const isAbort =
+      error &&
+      (error.name === 'AbortError' ||
+        String(error.message || '').toLowerCase().includes('aborted'));
+    if (isAbort) {
+      showStatus(`请求超时（${resolvedTimeoutMs / 1000}s），请检查服务器是否卡死或网络不稳定。`, true, [
+        { label: '刷新页面', variant: 'secondary', onClick: () => window.location.reload() },
+      ]);
+      throw error;
+    }
+    const hint = isFile
+      ? `当前以 file:// 打开页面，无法访问后端接口。请先运行 npm start，然后通过 http(s)://${host}/sales.html 打开。`
+      : `无法连接服务器（${host}）。请确认服务已启动（npm start）且网络/证书正常。`;
+    showStatus(hint, true, [
+      {
+        label: '复制访问链接',
+        variant: 'secondary',
+        onClick: () => copyTextToClipboard(`http://${host}/sales.html`),
+      },
+    ]);
+    throw error;
+  }
+  if (timeoutId) window.clearTimeout(timeoutId);
   if (response.status === 401 || response.status === 403) {
     window.location.href = '/login.html?role=sales';
     throw new Error('会话已过期，请重新登录。');
@@ -370,6 +428,7 @@ let salesStatusActions = new Map();
 let merchStatusActions = new Map();
 let checkinResultActions = new Map();
 let actionSeq = 0;
+let activeTicketOrder = null;
 
 const renderActionButtons = (container, actions = [], store) => {
   if (!container) return;
@@ -655,9 +714,8 @@ if (btnOpenCheckinHttps) {
 }
 renderHttpsHelpPanels();
 
-const setMerchStatus = (message, isError = false) => {
+const setMerchStatus = (message, isError = false, actions = []) => {
   if (!merchStatusEl) return;
-  const actions = arguments.length > 2 ? arguments[2] : [];
   merchStatusActions = new Map();
   merchStatusEl.textContent = '';
   merchStatusEl.classList.toggle('status--error', isError);
@@ -691,10 +749,25 @@ const setTicketCouponInfo = (message, isError = false) => {
   ticketCouponInfo.style.color = isError ? '#e14949' : '#637591';
 };
 
+const normalizeTicketCouponInput = (raw) => {
+  const input = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!input) return '';
+  const upper = input.toUpperCase();
+  const tokens = upper.match(/[A-Z0-9][A-Z0-9_-]{2,}/g) || [];
+  if (tokens.length) return tokens.sort((a, b) => b.length - a.length)[0];
+  const parts = upper
+    .split(/[:：]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : upper;
+};
+
 const renderTicketCoupon = (coupon, rule) => {
   activeTicketCoupon = coupon || null;
   if (!coupon) {
     setTicketCouponInfo('未使用优惠券。');
+    if (btnRedeemTicketCoupon) btnRedeemTicketCoupon.disabled = true;
+    updateSelectedList();
     return;
   }
   const lines = [];
@@ -707,6 +780,10 @@ const renderTicketCoupon = (coupon, rule) => {
     lines.push(`限制票价：${coupon.allowedPrices.join(' / ')}`);
   }
   setTicketCouponInfo(lines.join('\n'));
+  if (btnRedeemTicketCoupon) {
+    btnRedeemTicketCoupon.disabled = !(coupon.status === 'issued' && Number(coupon.remaining) > 0);
+  }
+  updateSelectedList();
 };
 
 const lookupTicketCoupon = async () => {
@@ -714,11 +791,12 @@ const lookupTicketCoupon = async () => {
     setTicketCouponInfo('请先选择项目。', true);
     return;
   }
-  const code = (inputTicketCoupon?.value || '').trim();
+  const code = normalizeTicketCouponInput(inputTicketCoupon?.value || '');
   if (!code) {
     setTicketCouponInfo('请输入优惠券码。', true);
     return;
   }
+  if (inputTicketCoupon && inputTicketCoupon.value.trim() !== code) inputTicketCoupon.value = code;
   setTicketCouponInfo('正在查询...');
   try {
     const resp = await authFetch(
@@ -736,6 +814,238 @@ const lookupTicketCoupon = async () => {
 const clearTicketCoupon = () => {
   if (inputTicketCoupon) inputTicketCoupon.value = '';
   renderTicketCoupon(null, null);
+};
+
+const openDialog = (dialog) => {
+  if (!dialog) return;
+  try {
+    if (!dialog.open && dialog.showModal) dialog.showModal();
+  } catch {
+    // ignore
+  }
+};
+
+const closeDialog = (dialog) => {
+  if (!dialog) return;
+  try {
+    if (dialog.open) dialog.close();
+  } catch {
+    // ignore
+  }
+};
+
+const computeTicketCouponPlan = (seats, options = {}) => {
+  const plan = {
+    seatDiscountedPrices: new Map(),
+    totalOriginal: 0,
+    totalAfter: 0,
+    discountTotal: 0,
+    appliedCount: 0,
+  };
+  if (!Array.isArray(seats) || !seats.length) return plan;
+
+  const enabled = options.enabled !== false;
+  const coupon = enabled ? (options.coupon || activeTicketCoupon) : null;
+  const remaining = coupon && coupon.status === 'issued' ? Number(coupon.remaining) || 0 : 0;
+  const allowedPrices = coupon && Array.isArray(coupon.allowedPrices) ? coupon.allowedPrices : null;
+  const discountRate = coupon ? Number(coupon.discountRate) : NaN;
+  const multiplier = Number.isFinite(discountRate) ? Math.max(0, Math.min(1, discountRate / 10)) : 1;
+
+  seats.forEach((seat) => {
+    const basePrice = Number(seat.price) || 0;
+    plan.totalOriginal += basePrice;
+  });
+
+  if (remaining > 0 && coupon) {
+    const eligible = seats
+      .map((seat) => ({ id: seatKey(seat.row, seat.col), seat }))
+      .filter((entry) => entry.seat.price != null)
+      .filter((entry) => {
+        if (!allowedPrices) return true;
+        const price = Number(entry.seat.price);
+        return allowedPrices.some((p) => Number(p) === price);
+      });
+    eligible
+      .slice()
+      .sort((a, b) => {
+        const ap = Number(a.seat.price) || 0;
+        const bp = Number(b.seat.price) || 0;
+        if (bp !== ap) return bp - ap;
+        if (a.seat.row !== b.seat.row) return a.seat.row - b.seat.row;
+        return a.seat.col - b.seat.col;
+      })
+      .slice(0, Math.min(remaining, eligible.length))
+      .forEach((entry) => {
+        const base = Number(entry.seat.price) || 0;
+        const discounted = Math.round(base * multiplier * 100) / 100;
+        plan.seatDiscountedPrices.set(entry.id, discounted);
+        plan.appliedCount += 1;
+      });
+  }
+
+  seats.forEach((seat) => {
+    const id = seatKey(seat.row, seat.col);
+    const basePrice = Number(seat.price) || 0;
+    const discounted = plan.seatDiscountedPrices.has(id) ? plan.seatDiscountedPrices.get(id) : null;
+    plan.totalAfter += discounted != null ? Number(discounted) : basePrice;
+  });
+
+  plan.totalOriginal = Math.round(plan.totalOriginal * 100) / 100;
+  plan.totalAfter = Math.round(plan.totalAfter * 100) / 100;
+  plan.discountTotal = Math.max(0, Math.round((plan.totalOriginal - plan.totalAfter) * 100) / 100);
+  return plan;
+};
+
+const setTicketCheckoutStatus = (message, isError = false) => {
+  if (!ticketCheckoutStatus) return;
+  ticketCheckoutStatus.textContent = message || '';
+  ticketCheckoutStatus.style.color = isError ? '#e14949' : '#1f76d0';
+};
+
+const renderTicketCheckoutSummary = () => {
+  if (!activeProject) return;
+  const seats = getSelfLockedSeats();
+  const useCoupon = Boolean(ticketUseCoupon?.checked);
+  const plan = computeTicketCouponPlan(seats, { enabled: useCoupon });
+  if (ticketCheckoutCount) ticketCheckoutCount.textContent = String(seats.length);
+  if (ticketCheckoutOriginal) ticketCheckoutOriginal.textContent = `¥${plan.totalOriginal.toFixed(2)}`;
+  if (ticketCheckoutDiscount) ticketCheckoutDiscount.textContent = `-¥${plan.discountTotal.toFixed(2)}`;
+  if (ticketCheckoutTotal) ticketCheckoutTotal.textContent = `¥${plan.totalAfter.toFixed(2)}`;
+  const couponCode = normalizeTicketCouponInput(inputTicketCoupon?.value || activeTicketCoupon?.code || '');
+  if (ticketCheckoutCoupon) {
+    if (useCoupon && couponCode) {
+      const applied = plan.appliedCount ? `（预计抵扣 ${plan.appliedCount} 张）` : '';
+      ticketCheckoutCoupon.textContent = `优惠券：${couponCode}${applied}`;
+    } else {
+      ticketCheckoutCoupon.textContent = '优惠券：未使用';
+    }
+  }
+};
+
+const openTicketCheckout = async () => {
+  if (!activeProject) {
+    showStatus('请先选择项目。', true);
+    return;
+  }
+  const seats = getSelfLockedSeats();
+  if (!seats.length) {
+    showStatus('请先锁定座位。', true);
+    return;
+  }
+  populatePaymentOptions();
+  const couponCode = normalizeTicketCouponInput(inputTicketCoupon?.value || activeTicketCoupon?.code || '');
+  if (ticketUseCoupon) {
+    ticketUseCoupon.checked = Boolean(couponCode);
+  }
+  if (couponCode && (!activeTicketCoupon || activeTicketCoupon.code !== couponCode)) {
+    try {
+      await lookupTicketCoupon();
+    } catch {
+      // ignore
+    }
+  }
+  renderTicketCheckoutSummary();
+  setTicketCheckoutStatus('');
+  openDialog(dialogTicketCheckout);
+};
+
+const submitTicketCheckout = async () => {
+  if (!activeProject) return;
+  if (activeTicketOrder) {
+    showStatus('当前已有待签发订单，请先完成扫码签发。', true);
+    return;
+  }
+  const seats = getSelfLockedSeats();
+  if (!seats.length) return;
+  const seatIds = seats.map((seat) => seatKey(seat.row, seat.col));
+  const couponCode = normalizeTicketCouponInput(inputTicketCoupon?.value || activeTicketCoupon?.code || '');
+  const useCoupon = Boolean(ticketUseCoupon?.checked);
+  if (useCoupon && !couponCode) {
+    setTicketCheckoutStatus('已勾选使用优惠券，请先输入/查询优惠券码。', true);
+    return;
+  }
+  const paymentMethod = ticketPaymentSelect?.value || MERCH_PAYMENT_OPTIONS[0];
+
+  if (btnConfirmTicketCheckout) btnConfirmTicketCheckout.disabled = true;
+  if (btnTicketCheckout) btnTicketCheckout.disabled = true;
+  setTicketCheckoutStatus('正在结账签发...');
+
+  try {
+    const resp = await emitAsync('tickets:checkout', {
+      projectId: activeProject.id,
+      seatIds,
+      couponCode: useCoupon ? couponCode : '',
+      useCoupon,
+      paymentMethod,
+    });
+    if (!resp.ok) throw new Error(resp.message || '结账失败');
+
+    if (resp.coupon) {
+      renderTicketCoupon(resp.coupon, null);
+      if (resp.coupon.status === 'used' || resp.coupon.remaining <= 0) {
+        if (inputTicketCoupon) inputTicketCoupon.value = '';
+      }
+    }
+
+    const seatQueue = Array.isArray(resp.order?.seatQueue) ? resp.order.seatQueue : seatIds;
+    activeTicketOrder = {
+      orderId: resp.order?.id,
+      orderNo: resp.order?.orderNo,
+      seatQueue: seatQueue.slice(),
+    };
+
+    closeDialog(dialogTicketCheckout);
+    showStatus(`已发起结账：${resp.order?.orderNo || ''}，请依次扫码签发。`.trim());
+    updateSelectedList();
+    updateProjectOptionStats();
+    updateZoneSummary();
+
+    const nextSeatId = activeTicketOrder.seatQueue.shift();
+    if (nextSeatId) {
+      beginIssuance(nextSeatId);
+    } else {
+      activeTicketOrder = null;
+    }
+  } catch (error) {
+    setTicketCheckoutStatus(error.message || '结账失败', true);
+    showStatus(error.message || '结账失败', true);
+  } finally {
+    if (btnConfirmTicketCheckout) btnConfirmTicketCheckout.disabled = false;
+    updateSelectedList();
+  }
+};
+
+const redeemTicketCoupon = async () => {
+  if (!activeProject) {
+    setTicketCouponInfo('请先选择项目。', true);
+    return;
+  }
+  const code = normalizeTicketCouponInput(inputTicketCoupon?.value || activeTicketCoupon?.code || '');
+  if (!code) {
+    setTicketCouponInfo('请输入优惠券码。', true);
+    return;
+  }
+  if (!window.confirm(`确认核销优惠券 ${code} 1 次？`)) return;
+  if (btnRedeemTicketCoupon) btnRedeemTicketCoupon.disabled = true;
+  setTicketCouponInfo('正在核销...');
+  try {
+    const resp = await authFetch(`/api/projects/${encodeURIComponent(activeProject.id)}/ticket-coupons/${encodeURIComponent(code)}/redeem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count: 1 }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || '核销失败');
+    renderTicketCoupon(data.coupon, null);
+    showStatus(`已核销优惠券 ${code} 1 次。`);
+  } catch (error) {
+    setTicketCouponInfo(error.message || '核销失败', true);
+    showStatus(error.message || '核销失败', true);
+  } finally {
+    if (btnRedeemTicketCoupon) {
+      btnRedeemTicketCoupon.disabled = !(activeTicketCoupon && activeTicketCoupon.status === 'issued' && activeTicketCoupon.remaining > 0);
+    }
+  }
 };
 
 const setVoucherOverlay = (message) => {
@@ -771,7 +1081,10 @@ const stopVoucherScan = () => {
 };
 
 const applyVoucherCode = (code) => {
-  const normalized = (code || '').trim();
+  const normalized =
+    voucherScanMode === 'ticket-coupon'
+      ? normalizeTicketCouponInput(code || '')
+      : String(code || '').trim();
   if (!normalized) return;
   if (voucherScanTarget) {
     voucherScanTarget.value = normalized;
@@ -785,6 +1098,8 @@ const applyVoucherCode = (code) => {
     setRedeemInfo('已填入预购券码，可点击“查询”。');
   } else if (voucherScanMode === 'presale') {
     setMerchStatus('已填入预购券码，可继续提交预售订单。');
+  } else if (voucherScanMode === 'ticket-coupon') {
+    setTicketCouponInfo('已填入优惠券码，可点击“查询”。');
   }
 };
 
@@ -1077,9 +1392,8 @@ const applyCheckoutModeToTotal = (totalBefore) => {
   };
 };
 
-const setCheckinResult = (message, status = null, detail = null) => {
+const setCheckinResult = (message, status = null, detail = null, actions = []) => {
   if (!checkinResultEl) return;
-  const actions = arguments.length > 3 ? arguments[3] : [];
   checkinResultActions = new Map();
   checkinResultEl.textContent = '';
   if (message) {
@@ -1278,13 +1592,19 @@ const populateCheckoutModes = () => {
 };
 
 const populatePaymentOptions = () => {
-  if (!merchPaymentSelect) return;
-  const prev = merchPaymentSelect.value || '';
+  const prevMerch = merchPaymentSelect?.value || '';
+  const prevTicket = ticketPaymentSelect?.value || '';
   const options = MERCH_PAYMENT_OPTIONS.map(
     (opt) => `<option value="${opt}">${opt}</option>`
   ).join('');
-  merchPaymentSelect.innerHTML = options;
-  merchPaymentSelect.value = MERCH_PAYMENT_OPTIONS.includes(prev) ? prev : MERCH_PAYMENT_OPTIONS[0];
+  if (merchPaymentSelect) {
+    merchPaymentSelect.innerHTML = options;
+    merchPaymentSelect.value = MERCH_PAYMENT_OPTIONS.includes(prevMerch) ? prevMerch : MERCH_PAYMENT_OPTIONS[0];
+  }
+  if (ticketPaymentSelect) {
+    ticketPaymentSelect.innerHTML = options;
+    ticketPaymentSelect.value = MERCH_PAYMENT_OPTIONS.includes(prevTicket) ? prevTicket : MERCH_PAYMENT_OPTIONS[0];
+  }
 };
 
 const renderMerchModes = () => {
@@ -2093,7 +2413,7 @@ const findAutoSelection = (priceFilter, count) => {
 const updateSelectedList = () => {
   const seats = getSelfLockedSeats();
   selectedList.innerHTML = '';
-  let total = 0;
+  const seatDiscountedPrices = new Map();
   seats
     .sort((a, b) => {
       if (a.row !== b.row) return a.row - b.row;
@@ -2109,39 +2429,46 @@ const updateSelectedList = () => {
       const title = document.createElement('strong');
       title.textContent = formatSeatLabel(seat);
       const price = document.createElement('span');
-      price.textContent = `票价：¥${seat.price ?? 0}`;
+      const id = seatKey(seat.row, seat.col);
+      const basePrice = Number(seat.price) || 0;
+      const discounted = seatDiscountedPrices.has(id) ? seatDiscountedPrices.get(id) : null;
+      if (discounted != null && discounted !== basePrice) {
+        price.textContent = `票价：¥${basePrice.toFixed(2)} → ¥${Number(discounted).toFixed(2)}`;
+      } else {
+        price.textContent = `票价：¥${basePrice.toFixed(2)}`;
+      }
       info.appendChild(title);
       info.appendChild(price);
 
       const actions = document.createElement('div');
       actions.className = 'selected-item__actions';
-      const issueBtn = document.createElement('button');
-      issueBtn.className = 'button button--secondary';
-      issueBtn.type = 'button';
-      issueBtn.dataset.action = 'issue';
-      issueBtn.textContent = seat.status === 'sold' ? '已签发' : '签发';
-      issueBtn.disabled = seat.status === 'sold';
-
       const removeBtn = document.createElement('button');
       removeBtn.className = 'button';
       removeBtn.type = 'button';
       removeBtn.dataset.action = 'remove';
       removeBtn.textContent = '删除';
+      if (activeTicketOrder) {
+        removeBtn.disabled = true;
+      }
 
-      actions.appendChild(issueBtn);
       actions.appendChild(removeBtn);
 
       item.appendChild(info);
       item.appendChild(actions);
       selectedList.appendChild(item);
-      total += seat.price || 0;
     });
 
   selectedCountEl.textContent = String(seats.length);
+  const total = seats.reduce((sum, seat) => sum + (Number(seat.price) || 0), 0);
   selectedTotalEl.textContent = `¥${total.toFixed(2)}`;
   if (btnClearSelected) {
     btnClearSelected.disabled = seats.length === 0;
   }
+  if (btnTicketCheckout) {
+    btnTicketCheckout.disabled = seats.length === 0;
+  }
+  if (btnClearSelected && activeTicketOrder) btnClearSelected.disabled = true;
+  if (btnTicketCheckout && activeTicketOrder) btnTicketCheckout.disabled = true;
   if (!seats.length) {
     const empty = document.createElement('li');
     empty.className = 'hint';
@@ -2167,8 +2494,6 @@ if (selectedList) selectedList.addEventListener('click', (event) => {
         showStatus('已取消该座位。');
       }
     });
-  } else if (action === 'issue') {
-    beginIssuance(seatId);
   }
 });
 
@@ -2902,8 +3227,13 @@ const clearPendingIssue = ({ keepMessage = false } = {}) => {
 };
 
 const issueSeat = (seatId, ticketCode) => {
-  const couponCode = (inputTicketCoupon?.value || '').trim();
-  socket.emit('seat:issue', { projectId: activeProject.id, seatId, ticketCode, couponCode }, (resp) => {
+  const isOrderFlow = Boolean(activeTicketOrder && activeTicketOrder.orderId);
+  const couponCode = isOrderFlow ? '' : normalizeTicketCouponInput(inputTicketCoupon?.value || '');
+  if (!isOrderFlow && couponCode && inputTicketCoupon && inputTicketCoupon.value.trim() !== couponCode) {
+    inputTicketCoupon.value = couponCode;
+  }
+  const orderId = isOrderFlow ? activeTicketOrder.orderId : null;
+  socket.emit('seat:issue', { projectId: activeProject.id, seatId, ticketCode, couponCode, orderId }, (resp) => {
     if (!resp.ok) {
       showStatus(resp.message || '签发失败', true);
       showScanOverlayMessage(resp.message || '签发失败，请重试。', { visible: true });
@@ -2926,10 +3256,27 @@ const issueSeat = (seatId, ticketCode) => {
     if (resp.coupon && resp.coupon.code) {
       const label = `已使用优惠券 ${resp.coupon.code}，剩余 ${resp.coupon.remaining}`;
       setTicketCouponInfo(label);
+      if (!activeTicketCoupon || activeTicketCoupon.code !== resp.coupon.code) {
+        activeTicketCoupon = {
+          code: resp.coupon.code,
+          remaining: resp.coupon.remaining,
+          status: resp.coupon.status,
+          discountRate: resp.coupon.discountRate ?? null,
+          allowedPrices: null,
+        };
+      } else {
+        activeTicketCoupon.remaining = resp.coupon.remaining;
+        activeTicketCoupon.status = resp.coupon.status;
+        if (resp.coupon.discountRate != null) activeTicketCoupon.discountRate = resp.coupon.discountRate;
+      }
+      if (btnRedeemTicketCoupon) {
+        btnRedeemTicketCoupon.disabled = !(activeTicketCoupon.status === 'issued' && Number(activeTicketCoupon.remaining) > 0);
+      }
       if (resp.coupon.status === 'used' || resp.coupon.remaining <= 0) {
         setTicketCouponInfo(`优惠券 ${resp.coupon.code} 已用尽。`);
         if (inputTicketCoupon) inputTicketCoupon.value = '';
         activeTicketCoupon = null;
+        if (btnRedeemTicketCoupon) btnRedeemTicketCoupon.disabled = true;
       }
     }
     updateSeatElement(seatId);
@@ -2944,6 +3291,22 @@ const issueSeat = (seatId, ticketCode) => {
     );
     clearPendingIssue({ keepMessage: true });
     manualCodeInput.value = '';
+
+    if (isOrderFlow && activeTicketOrder) {
+      if (resp.order && resp.order.status === 'completed') {
+        showStatus(`订单 ${resp.order.orderNo || ''} 已完成签发。`.trim());
+        activeTicketOrder = null;
+        updateSelectedList();
+        return;
+      }
+      const nextSeatId = activeTicketOrder.seatQueue.shift();
+      if (nextSeatId) {
+        beginIssuance(nextSeatId);
+      } else {
+        activeTicketOrder = null;
+        updateSelectedList();
+      }
+    }
   });
 };
 
@@ -3173,6 +3536,28 @@ if (btnClearSelected) {
     } finally {
       btnClearSelected.disabled = getSelfLockedSeats().length === 0;
     }
+  });
+}
+
+if (btnTicketCheckout) {
+  btnTicketCheckout.addEventListener('click', () => openTicketCheckout());
+}
+
+if (btnCancelTicketCheckout) {
+  btnCancelTicketCheckout.addEventListener('click', () => closeDialog(dialogTicketCheckout));
+}
+
+if (ticketCheckoutForm) {
+  ticketCheckoutForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    submitTicketCheckout();
+  });
+}
+
+if (ticketUseCoupon) {
+  ticketUseCoupon.addEventListener('change', () => {
+    renderTicketCheckoutSummary();
+    setTicketCheckoutStatus('');
   });
 }
 
@@ -3642,6 +4027,7 @@ if (btnScanTicketCoupon && inputTicketCoupon) {
 }
 
 if (btnLookupTicketCoupon) btnLookupTicketCoupon.addEventListener('click', lookupTicketCoupon);
+if (btnRedeemTicketCoupon) btnRedeemTicketCoupon.addEventListener('click', redeemTicketCoupon);
 if (btnClearTicketCoupon) btnClearTicketCoupon.addEventListener('click', clearTicketCoupon);
 if (inputTicketCoupon) {
   inputTicketCoupon.addEventListener('keydown', (event) => {

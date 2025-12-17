@@ -16681,7 +16681,115 @@
         }
       },
       "ticketDiscountRules": {},
-      "ticketCoupons": {}
+      "ticketCoupons": {
+        "CP251215Z58BED": {
+          "code": "CP251215Z58BED",
+          "ruleId": "93799474-507e-48bf-a0f3-f1adfa7ae0a7",
+          "ruleName": "节目组9折",
+          "ticketCount": 1,
+          "discountRate": 8,
+          "allowedPrices": [
+            40,
+            50
+          ],
+          "remaining": 1,
+          "status": "voided",
+          "issuedAt": 1765775332641,
+          "issuedBy": "admin",
+          "usedAt": null,
+          "usedBy": null,
+          "usedSeats": [],
+          "voidedAt": 1765785396004,
+          "voidedBy": "admin",
+          "voidedReason": ""
+        },
+        "CP251215TZVCFV": {
+          "code": "CP251215TZVCFV",
+          "ruleId": "93799474-507e-48bf-a0f3-f1adfa7ae0a7",
+          "ruleName": "节目组9折",
+          "ticketCount": 1,
+          "discountRate": 8,
+          "allowedPrices": [
+            40,
+            50
+          ],
+          "remaining": 1,
+          "status": "voided",
+          "issuedAt": 1765775332641,
+          "issuedBy": "admin",
+          "usedAt": null,
+          "usedBy": null,
+          "usedSeats": [],
+          "voidedAt": 1765785400638,
+          "voidedBy": "admin",
+          "voidedReason": ""
+        },
+        "CP251215LG9ZLQ": {
+          "code": "CP251215LG9ZLQ",
+          "ruleId": "93799474-507e-48bf-a0f3-f1adfa7ae0a7",
+          "ruleName": "节目组9折",
+          "ticketCount": 1,
+          "discountRate": 8,
+          "allowedPrices": [
+            40,
+            50
+          ],
+          "remaining": 1,
+          "status": "voided",
+          "issuedAt": 1765775332641,
+          "issuedBy": "admin",
+          "usedAt": null,
+          "usedBy": null,
+          "usedSeats": [],
+          "voidedAt": 1765784655326,
+          "voidedBy": "admin",
+          "voidedReason": ""
+        },
+        "CP2512153P8PYA": {
+          "code": "CP2512153P8PYA",
+          "ruleId": "93799474-507e-48bf-a0f3-f1adfa7ae0a7",
+          "ruleName": "节目组9折",
+          "ticketCount": 1,
+          "discountRate": 8,
+          "allowedPrices": [
+            40,
+            50
+          ],
+          "remaining": 1,
+          "status": "voided",
+          "issuedAt": 1765775332641,
+          "issuedBy": "admin",
+          "usedAt": null,
+          "usedBy": null,
+          "usedSeats": [],
+          "voidedAt": 1765784662843,
+          "voidedBy": "admin",
+          "voidedReason": ""
+        },
+        "CP251215KBR2BU": {
+          "code": "CP251215KBR2BU",
+          "ruleId": "93799474-507e-48bf-a0f3-f1adfa7ae0a7",
+          "ruleName": "节目组9折",
+          "ticketCount": 1,
+          "discountRate": 8,
+          "allowedPrices": [
+            40,
+            50
+          ],
+          "remaining": 1,
+          "status": "voided",
+          "issuedAt": 1765775332641,
+          "issuedBy": "admin",
+          "usedAt": null,
+          "usedBy": null,
+          "usedSeats": [],
+          "voidedAt": 1765785405655,
+          "voidedBy": "admin",
+          "voidedReason": ""
+        }
+      },
+      "ticketOrders": [],
+      "ticketOrdersNext": 1
     }
   },
   "accounts": {
@@ -16694,75 +16802,97 @@
     },
     "sales": {
       "username": "sales",
-      "passwordHash": "$2b$10$ruSe8NBjJ7yeXpxPY45VZelVvsEu8bFSdOlv1JeirWwiOFb2gd0y.",
+      "passwordHash": "$2b$10$Vudr4TJOyfpNZy4MGqoBzeVRRvhAF89OsPkjN9R19elK2uD64fYjy",
       "role": "sales",
-      "createdAt": 1764082259177,
-      "updatedAt": 1764082259177
-    },
-    "yan family foundation": {
-      "username": "Yan Family Foundation",
-      "passwordHash": "$2b$10$LCKUTN7mnmMFblHKcowXcO2SLVO8YTpUexj70XsDsOxa5w1RrbZOC",
-      "role": "sales",
-      "createdAt": 1764404745930,
-      "updatedAt": 1764404745930
-    },
-    "admin2": {
-      "username": "admin2",
-      "passwordHash": "$2b$10$vqVgg1qlpTfj4xXpCUl8N.phYO8.4n67g8el7LsPvlMOhyI/hP7j2",
-      "role": "admin",
-      "createdAt": 1764839489553,
-      "updatedAt": 1764839489553
+      "createdAt": 1765785276922,
+      "updatedAt": 1765785276922
     }
   },
   "merch": {
     "products": {
-      "e567f9c6-820a-49e2-b340-b9ecf6c69228": {
-        "id": "e567f9c6-820a-49e2-b340-b9ecf6c69228",
-        "name": "冰箱贴（配一个PE展示框、一个圆形支架）",
-        "price": 19.9,
-        "stock": 94,
-        "description": "腾飞喷泉文创冰箱贴",
+      "a8f9b1f9-98ec-4c7b-80ee-a3dfac5bd642": {
+        "id": "a8f9b1f9-98ec-4c7b-80ee-a3dfac5bd642",
+        "name": "文创书签",
+        "price": 14.9,
+        "stock": 100,
+        "description": "",
         "imageData": null,
-        "imagePath": "/uploads/merch/4cdf1a84-a8a2-498d-a7a7-4d86203fb810.png",
+        "imagePath": "/uploads/merch/4f23a59d-7a4a-4382-b532-5ef165f4611d.png",
         "enabled": true,
-        "createdAt": 1764403627496,
-        "updatedAt": 1764757215903
+        "createdAt": 1765802053700,
+        "updatedAt": 1765802053700
       },
-      "417e7c05-facd-4ee3-a452-a6936ed86a4f": {
-        "id": "417e7c05-facd-4ee3-a452-a6936ed86a4f",
-        "name": "拼图-乙楼（配相框）",
-        "price": 19.9,
-        "stock": 53,
-        "description": "乙楼拼图",
+      "45570d4c-7792-44b8-8ce9-436062968178": {
+        "id": "45570d4c-7792-44b8-8ce9-436062968178",
+        "name": "腾飞喷泉冰箱贴",
+        "price": 9.9,
+        "stock": 100,
+        "description": "",
         "imageData": null,
-        "imagePath": "/uploads/merch/9b388e1a-d256-4e9c-b529-fdf9bc19cefb.jpg",
+        "imagePath": "/uploads/merch/06110625-8c0b-4212-b25c-a540210fb2ae.png",
         "enabled": true,
-        "createdAt": 1764403668932,
-        "updatedAt": 1764427856902
+        "createdAt": 1765802099348,
+        "updatedAt": 1765802099348
       },
-      "54d89189-05f4-44c7-a321-d3e13b2e8584": {
-        "id": "54d89189-05f4-44c7-a321-d3e13b2e8584",
-        "name": "拼图-飞耀喷泉（配相框）",
-        "price": 19.9,
-        "stock": 51,
-        "description": "飞耀喷泉拼图",
+      "5b4aabea-525b-4bec-b514-668c2ff92af3": {
+        "id": "5b4aabea-525b-4bec-b514-668c2ff92af3",
+        "name": "拼图盲盒（不含相框）",
+        "price": 9.9,
+        "stock": 100,
+        "description": "",
         "imageData": null,
-        "imagePath": "/uploads/merch/5f687202-25b7-416f-b2fc-119cccbd5056.jpg",
+        "imagePath": "/uploads/merch/9926d00b-5c0d-4364-8858-a2f21a980c23.png",
         "enabled": true,
-        "createdAt": 1764403708114,
-        "updatedAt": 1765625046635
+        "createdAt": 1765802133631,
+        "updatedAt": 1765802133631
       },
-      "62ec9850-b68e-4394-afa2-88eb7b99ac21": {
-        "id": "62ec9850-b68e-4394-afa2-88eb7b99ac21",
-        "name": "拼图-乐家花园（配相框）",
-        "price": 19.9,
-        "stock": 53,
-        "description": "乐家花园拼图",
+      "ed59d9d4-fc07-4c57-92dc-de217d6f1e96": {
+        "id": "ed59d9d4-fc07-4c57-92dc-de217d6f1e96",
+        "name": "文创拼图（含相框）",
+        "price": 14.9,
+        "stock": 100,
+        "description": "",
         "imageData": null,
-        "imagePath": "/uploads/merch/e0d0537b-0b8f-491e-be84-e17cc2b2b31c.jpg",
+        "imagePath": "/uploads/merch/5130afe4-fb1a-480c-ae92-e96d6d56d24d.png",
         "enabled": true,
-        "createdAt": 1764403735157,
-        "updatedAt": 1765625046635
+        "createdAt": 1765802150899,
+        "updatedAt": 1765802150899
+      },
+      "985f6e5c-c480-4cd2-9c0e-67e5cccfca75": {
+        "id": "985f6e5c-c480-4cd2-9c0e-67e5cccfca75",
+        "name": "杜邦纸袋",
+        "price": 24.9,
+        "stock": 100,
+        "description": "",
+        "imageData": null,
+        "imagePath": "/uploads/merch/fdd64a24-c9fc-4cb0-bd64-da340955f6b3.png",
+        "enabled": true,
+        "createdAt": 1765802178017,
+        "updatedAt": 1765802178017
+      },
+      "e27950ce-3910-4ea1-b8e4-7f3966d08e14": {
+        "id": "e27950ce-3910-4ea1-b8e4-7f3966d08e14",
+        "name": "帆布袋",
+        "price": 9.9,
+        "stock": 100,
+        "description": "",
+        "imageData": null,
+        "imagePath": "/uploads/merch/8a16bdb0-b261-423a-bae5-ad1ed004f515.png",
+        "enabled": true,
+        "createdAt": 1765802197745,
+        "updatedAt": 1765802197745
+      },
+      "2a89e356-7f3f-4e2c-9890-c13474a185a8": {
+        "id": "2a89e356-7f3f-4e2c-9890-c13474a185a8",
+        "name": "流沙冰箱贴",
+        "price": 24.9,
+        "stock": 100,
+        "description": "",
+        "imageData": null,
+        "imagePath": "/uploads/merch/affa15e3-7cb1-49ba-8d82-ba000f012728.png",
+        "enabled": true,
+        "createdAt": 1765802218633,
+        "updatedAt": 1765803770937
       }
     },
     "checkoutModes": {
@@ -16781,74 +16911,294 @@
       }
     },
     "orders": [],
-    "_orderNoSeed": 13,
-    "vouchers": {
-      "NO.8120251231000": {
-        "code": "NO.8120251231000",
-        "status": "redeemed",
-        "orderId": "8e2fbe82-2c41-4133-b749-c6beb5e3721b",
-        "orderNumber": "2975578300133",
-        "createdAt": 1765625030283,
-        "createdBy": "sales",
-        "redeemedAt": 1765625046635,
-        "redeemedBy": "sales",
-        "items": [
-          {
-            "productId": "62ec9850-b68e-4394-afa2-88eb7b99ac21",
-            "name": "拼图-乐家花园（配相框）",
-            "quantity": 1,
-            "unitPrice": 19.9,
-            "subtotal": 19.9,
-            "imagePath": "/uploads/merch/e0d0537b-0b8f-491e-be84-e17cc2b2b31c.jpg"
-          },
-          {
-            "productId": "54d89189-05f4-44c7-a321-d3e13b2e8584",
-            "name": "拼图-飞耀喷泉（配相框）",
-            "quantity": 1,
-            "unitPrice": 19.9,
-            "subtotal": 19.9,
-            "imagePath": "/uploads/merch/5f687202-25b7-416f-b2fc-119cccbd5056.jpg"
-          }
-        ],
-        "checkoutModeName": "原价",
-        "paymentMethod": "现金（人民币）",
-        "note": "",
-        "totalBefore": 39.8,
-        "totalAfter": 39.8,
-        "discount": 0
-      }
-    },
+    "_orderNoSeed": 15,
+    "vouchers": {},
     "voucherRedemptions": []
   },
   "auditLog": [
     {
-      "id": "1d9f95fc-ac10-4885-a501-b3ea2211eb20",
-      "createdAt": 1765625502645,
+      "id": "ecd18310-e10d-41fd-b92e-b4bc1741a3b3",
+      "createdAt": 1765803755470,
       "actor": "admin",
       "action": "merch-order:delete",
-      "detail": "删除订单 8242de18-b71c-474b-96ad-bfb27f9d2f87"
+      "detail": "删除订单 ba055aec-8b82-45e8-bf63-e866094cf671"
     },
     {
-      "id": "654b26f2-af6a-458c-a181-1d41ce3a420f",
-      "createdAt": 1765625046635,
-      "actor": "sales",
+      "id": "c6684424-731c-43e1-b1e8-6dd824a17608",
+      "createdAt": 1765803752122,
+      "actor": "admin",
+      "action": "merch-order:delete",
+      "detail": "删除订单 15387fbc-6973-435c-a750-03e9a39d9c90"
+    },
+    {
+      "id": "f6b3531b-fe66-4f6f-a3ab-f0634fdda75f",
+      "createdAt": 1765803716458,
+      "actor": "admin",
       "action": "merch-voucher:redeem",
-      "detail": "核销预购券 NO.8120251231000 -> 订单 8e2fbe82-2c41-4133-b749-c6beb5e3721b"
+      "detail": "核销预购券 NO.8120251231000 -> 订单 ba055aec-8b82-45e8-bf63-e866094cf671"
     },
     {
-      "id": "556fc3bb-150e-410c-a626-85b94889150a",
-      "createdAt": 1765625030283,
-      "actor": "sales",
+      "id": "0de9f6b5-1ff1-4497-9c31-24df8735da55",
+      "createdAt": 1765803690804,
+      "actor": "admin",
       "action": "merch-voucher:issue",
-      "detail": "签发预购券 NO.8120251231000 -> 订单 8e2fbe82-2c41-4133-b749-c6beb5e3721b"
+      "detail": "签发预购券 NO.8120251231000 -> 订单 ba055aec-8b82-45e8-bf63-e866094cf671"
     },
     {
-      "id": "8c07d701-0c71-447d-8b2e-12a157b1d029",
-      "createdAt": 1765624998156,
-      "actor": "sales",
+      "id": "c9b8c3dc-5e84-4b0e-ad5d-d941a1382e9f",
+      "createdAt": 1765803682135,
+      "actor": "admin",
       "action": "merch-order:create",
-      "detail": "创建文创订单 8242de18-b71c-474b-96ad-bfb27f9d2f87"
+      "detail": "创建文创订单 15387fbc-6973-435c-a750-03e9a39d9c90"
+    },
+    {
+      "id": "a91b9557-efe3-481c-a53f-047f7e7eb497",
+      "createdAt": 1765801801330,
+      "actor": "admin",
+      "action": "project:delete",
+      "detail": "删除项目 c70654da-9f27-442d-8f87-10db796af5fa"
+    },
+    {
+      "id": "b70c8959-947a-4956-9ac1-d6abb0be5053",
+      "createdAt": 1765801085284,
+      "actor": "sales",
+      "action": "ticket-order:start",
+      "detail": "发起票务结账 TK25121500002（4 座位，应付 500，支付方式：MasterCard，核销券：CP251215TQK5FU（抵扣 2 张））"
+    },
+    {
+      "id": "0a46b254-9c54-438b-a188-2a8ab085b055",
+      "createdAt": 1765801056202,
+      "actor": "admin",
+      "action": "ticket-coupon:issue",
+      "detail": "签发优惠券 1 张（规则：五折）"
+    },
+    {
+      "id": "33159c8b-9532-49cc-a9d6-8db7a92cb76f",
+      "createdAt": 1765799876308,
+      "actor": "sales",
+      "action": "ticket-coupon:redeem",
+      "detail": "核销优惠券 CP251215W8WYLU 1 次（剩余 0）"
+    },
+    {
+      "id": "3e89c48f-dada-408d-9894-dc43c4f41496",
+      "createdAt": 1765799872870,
+      "actor": "sales",
+      "action": "ticket-coupon:redeem",
+      "detail": "核销优惠券 CP251215W8WYLU 1 次（剩余 1）"
+    },
+    {
+      "id": "0b4ba18b-4748-4587-903b-0cd74ecc0710",
+      "createdAt": 1765795697214,
+      "actor": "sales",
+      "action": "ticket-coupon:redeem",
+      "detail": "核销优惠券 CP251215W8WYLU 1 次（剩余 2）"
+    },
+    {
+      "id": "27d78dd3-5e24-4a63-ac1c-cc6ac356d924",
+      "createdAt": 1765795683227,
+      "actor": "admin",
+      "action": "ticket-coupon:issue",
+      "detail": "签发优惠券 1 张（规则：五折）"
+    },
+    {
+      "id": "955e2ffd-1112-4f2f-938c-ffcd643cb175",
+      "createdAt": 1765795679142,
+      "actor": "admin",
+      "action": "ticket-discount:create",
+      "detail": "新增票务折扣规则 五折（86db1799-b4cd-4dff-bb35-e1be73aabee1）"
+    },
+    {
+      "id": "565c50b8-a343-457a-aaad-c8171ee56847",
+      "createdAt": 1765795123172,
+      "actor": "admin",
+      "action": "project:delete",
+      "detail": "删除项目 27f0773f-959e-460a-b7aa-266022654359"
+    },
+    {
+      "id": "4a28f9e7-1da7-4c2b-aa81-b463568ce475",
+      "createdAt": 1765785450748,
+      "actor": "admin",
+      "action": "ticket-coupon:issue",
+      "detail": "签发优惠券 1 张（规则：5折）"
+    },
+    {
+      "id": "9c1d2068-884a-4b37-b44c-9d5a57c2cf08",
+      "createdAt": 1765785447314,
+      "actor": "admin",
+      "action": "ticket-discount:create",
+      "detail": "新增票务折扣规则 5折（c30f80c6-5f7b-4e8e-ade6-62017b39b31e）"
+    },
+    {
+      "id": "2c5567c5-2869-4ccb-90d7-21ba7259a7f5",
+      "createdAt": 1765785413562,
+      "actor": "admin",
+      "action": "ticket-discount:delete",
+      "detail": "删除票务折扣规则 节目组9折（93799474-507e-48bf-a0f3-f1adfa7ae0a7）"
+    },
+    {
+      "id": "463822e1-41e8-4cbc-8daf-32e509f236c4",
+      "createdAt": 1765785405655,
+      "actor": "admin",
+      "action": "ticket-coupon:void",
+      "detail": "作废优惠券 CP251215KBR2BU"
+    },
+    {
+      "id": "e9b69712-1ce8-40d4-b9dc-d8772faf41a7",
+      "createdAt": 1765785400638,
+      "actor": "admin",
+      "action": "ticket-coupon:void",
+      "detail": "作废优惠券 CP251215TZVCFV"
+    },
+    {
+      "id": "a77cc89d-0955-4b51-8aaa-fe5ec2509f74",
+      "createdAt": 1765785396004,
+      "actor": "admin",
+      "action": "ticket-coupon:void",
+      "detail": "作废优惠券 CP251215Z58BED"
+    },
+    {
+      "id": "cf203ab0-1f7c-4cde-bed2-7164c9b4afc8",
+      "createdAt": 1765785267979,
+      "actor": "admin",
+      "action": "account:delete",
+      "detail": "删除账号 liuwenzheng"
+    },
+    {
+      "id": "ebf68f88-5ab7-48db-8ede-7e1016b0405f",
+      "createdAt": 1765785264116,
+      "actor": "admin",
+      "action": "account:delete",
+      "detail": "删除账号 yandonglin"
+    },
+    {
+      "id": "57020641-a4ea-489d-8814-67e68367a137",
+      "createdAt": 1765785251545,
+      "actor": "admin",
+      "action": "account:delete",
+      "detail": "删除账号 sales"
+    },
+    {
+      "id": "08687c8d-f560-438e-bde5-b4da1a25c7b2",
+      "createdAt": 1765785220894,
+      "actor": "admin",
+      "action": "account:delete",
+      "detail": "删除账号 yan family foundation"
+    },
+    {
+      "id": "4d39b0c2-42aa-431d-94d9-1794ef6696a3",
+      "createdAt": 1765785212212,
+      "actor": "admin",
+      "action": "account:delete",
+      "detail": "删除账号 liuwenzheng"
+    },
+    {
+      "id": "49bdd405-69f6-4580-9891-d57f9c69bea4",
+      "createdAt": 1765785184062,
+      "actor": "admin",
+      "action": "account:delete",
+      "detail": "删除账号 admin2"
+    },
+    {
+      "id": "245480bf-6944-448f-91a9-dea2947a7160",
+      "createdAt": 1765785081369,
+      "actor": "admin",
+      "action": "merch-product:delete",
+      "detail": "删除商品 417e7c05-facd-4ee3-a452-a6936ed86a4f"
+    },
+    {
+      "id": "1af37183-5952-4f64-8c65-dd455eeddbd9",
+      "createdAt": 1765785076989,
+      "actor": "admin",
+      "action": "merch-product:delete",
+      "detail": "删除商品 54d89189-05f4-44c7-a321-d3e13b2e8584"
+    },
+    {
+      "id": "5c18559e-a30f-4a69-9c65-b8018a32cf00",
+      "createdAt": 1765785073605,
+      "actor": "admin",
+      "action": "merch-product:delete",
+      "detail": "删除商品 62ec9850-b68e-4394-afa2-88eb7b99ac21"
+    },
+    {
+      "id": "b483f792-d6eb-4a29-ad04-30cec3b45a73",
+      "createdAt": 1765785070539,
+      "actor": "admin",
+      "action": "merch-product:delete",
+      "detail": "删除商品 e567f9c6-820a-49e2-b340-b9ecf6c69228"
     }
   ],
-  "checkInLogs": []
+  "checkInLogs": [
+    {
+      "id": "c9815eea-4db5-4c30-b052-3cf395bd022f",
+      "projectId": "c70654da-9f27-442d-8f87-10db796af5fa",
+      "projectName": "Test",
+      "seatId": "r1-c1",
+      "row": 1,
+      "col": 1,
+      "seatLabel": "2排2号",
+      "ticketNumber": "4",
+      "price": 200,
+      "status": "success",
+      "issuedAt": 1765801099012,
+      "checkedInAt": 1765801134425,
+      "checkedInBy": "admin",
+      "message": "检票成功",
+      "handledBy": "admin",
+      "createdAt": 1765801134425
+    },
+    {
+      "id": "998ce903-8e07-4a27-86c9-cff5f73ef443",
+      "projectId": "c70654da-9f27-442d-8f87-10db796af5fa",
+      "projectName": "Test",
+      "seatId": "r1-c0",
+      "row": 1,
+      "col": 0,
+      "seatLabel": "2排1号",
+      "ticketNumber": "3",
+      "price": 200,
+      "status": "success",
+      "issuedAt": 1765801097411,
+      "checkedInAt": 1765801132762,
+      "checkedInBy": "admin",
+      "message": "检票成功",
+      "handledBy": "admin",
+      "createdAt": 1765801132762
+    },
+    {
+      "id": "2fdde009-f969-46f4-b207-94ed4f48d817",
+      "projectId": "c70654da-9f27-442d-8f87-10db796af5fa",
+      "projectName": "Test",
+      "seatId": "r0-c1",
+      "row": 0,
+      "col": 1,
+      "seatLabel": "1排2号",
+      "ticketNumber": "2",
+      "price": 100,
+      "status": "success",
+      "issuedAt": 1765801095361,
+      "checkedInAt": 1765801131373,
+      "checkedInBy": "admin",
+      "message": "检票成功",
+      "handledBy": "admin",
+      "createdAt": 1765801131373
+    },
+    {
+      "id": "f0da4d87-4347-4a9d-9cd5-d8b5af34d788",
+      "projectId": "c70654da-9f27-442d-8f87-10db796af5fa",
+      "projectName": "Test",
+      "seatId": "r0-c0",
+      "row": 0,
+      "col": 0,
+      "seatLabel": "1排1号",
+      "ticketNumber": "1",
+      "price": 100,
+      "status": "success",
+      "issuedAt": 1765801092646,
+      "checkedInAt": 1765801129849,
+      "checkedInBy": "admin",
+      "message": "检票成功",
+      "handledBy": "admin",
+      "createdAt": 1765801129849
+    }
+  ]
 }

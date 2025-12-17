@@ -14,11 +14,11 @@ const crypto = require('crypto');
 const os = require('os');
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
 const DATA_FILE = path.join(__dirname, 'data', 'state.json');
 const LOCK_DIR = path.join(__dirname, 'data', 'locks');
 const REDIS_URL = process.env.REDIS_URL || process.env.REDIS;
 const LOCK_TIMEOUT_MS = 2 * 60 * 1000;
+const PENDING_TICKET_ORDER_TIMEOUT_MS = 30 * 60 * 1000;
 const SESSION_COOKIE_NAME = 'sessionId';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
@@ -295,6 +295,12 @@ const ensureProjectMetadata = (project) => {
   }
   if (!project.ticketCoupons || typeof project.ticketCoupons !== 'object') {
     project.ticketCoupons = {};
+  }
+  if (!Array.isArray(project.ticketOrders)) {
+    project.ticketOrders = [];
+  }
+  if (typeof project.ticketOrdersNext !== 'number' || project.ticketOrdersNext < 1) {
+    project.ticketOrdersNext = 1;
   }
 };
 
@@ -1473,12 +1479,91 @@ const releaseSeatLock = (seat) => {
   }
 };
 
+const rollbackTicketCouponUsage = (project, { couponCode, seatId, orderNo }) => {
+  if (!project) return;
+  const code = normalizeCouponCode(couponCode || '');
+  if (!code) return;
+  const coupon = project.ticketCoupons?.[code];
+  if (!coupon || coupon.status === 'voided') return;
+
+  if (Array.isArray(coupon.usedSeats) && coupon.usedSeats.length) {
+    for (let i = coupon.usedSeats.length - 1; i >= 0; i -= 1) {
+      const entry = coupon.usedSeats[i];
+      if (!entry) continue;
+      if (seatId && entry.seatId !== seatId) continue;
+      if (orderNo && entry.note !== `order:${orderNo}`) continue;
+      coupon.usedSeats.splice(i, 1);
+      break;
+    }
+  }
+
+  const maxUses = Number(coupon.ticketCount) || 0;
+  const usedCount = Array.isArray(coupon.usedSeats) ? coupon.usedSeats.length : 0;
+  const remaining = Math.max(0, maxUses - usedCount);
+  coupon.remaining = remaining;
+  if (remaining > 0) {
+    coupon.status = 'issued';
+    coupon.usedAt = null;
+    coupon.usedBy = null;
+  } else {
+    coupon.status = 'used';
+    if (!coupon.usedAt) coupon.usedAt = Date.now();
+  }
+};
+
+const clearPendingSeatFields = (seat) => {
+  if (!seat) return;
+  seat.pendingOrderId = null;
+  seat.pendingOrderNo = null;
+  seat.pendingOrderExpiresAt = null;
+  seat.pendingPaymentMethod = null;
+  seat.pendingSoldPrice = null;
+  seat.pendingCouponCode = null;
+  seat.pendingSoldDiscount = null;
+};
+
+const cancelPendingTicketOrder = (project, orderId, { actor = 'system', reason = 'timeout' } = {}) => {
+  if (!project || !orderId) return;
+  ensureProjectMetadata(project);
+  const order = (project.ticketOrders || []).find((o) => o && o.id === orderId);
+  if (!order || order.status !== 'pending') return;
+
+  const issued = new Set(Array.isArray(order.issuedSeatIds) ? order.issuedSeatIds : []);
+  const appliedSeatIds = Array.isArray(order.appliedSeatIds) ? order.appliedSeatIds : [];
+  const couponCode = normalizeCouponCode(order.couponCode || '');
+
+  appliedSeatIds.forEach((seatId) => {
+    if (issued.has(seatId)) return;
+    rollbackTicketCouponUsage(project, { couponCode, seatId, orderNo: order.orderNo });
+  });
+
+  order.status = 'canceled';
+  order.canceledAt = Date.now();
+  order.canceledBy = actor;
+  order.canceledReason = reason;
+
+  Object.values(project.seats || {}).forEach((seat) => {
+    const id = seat ? seatId(seat.row, seat.col) : null;
+    if (!id) return;
+    if (seat.pendingOrderId !== orderId) return;
+    clearPendingSeatFields(seat);
+    releaseSeatLock(seat);
+  });
+};
+
 const enforceLockTimeouts = () => {
   const now = Date.now();
   let changedProjects = new Set();
   Object.values(state.projects).forEach((project) => {
     let changed = false;
     Object.values(project.seats).forEach((seat) => {
+      if (seat.pendingOrderId) {
+        if (seat.pendingOrderExpiresAt && seat.pendingOrderExpiresAt <= now) {
+          cancelPendingTicketOrder(project, seat.pendingOrderId, { actor: 'system', reason: 'pending-order-timeout' });
+          changed = true;
+        }
+        return;
+      }
       if (seat.lockExpiresAt && seat.lockExpiresAt <= now) {
         releaseSeatLock(seat);
         changed = true;
@@ -4077,6 +4162,42 @@ app.post('/api/projects/:projectId/ticket-coupons/:code/void', requireRole('admi
   res.json({ ok: true, coupon });
 });
 
+app.post('/api/projects/:projectId/ticket-coupons/:code/redeem', requireSalesOrAdmin, async (req, res) => {
+  const project = state.projects[req.params.projectId];
+  if (!project) return res.status(404).json({ error: '项目不存在' });
+  ensureProjectMetadata(project);
+  const code = normalizeCouponCode(req.params.code);
+  if (!code) return res.status(400).json({ error: '优惠券码无效' });
+  const coupon = project.ticketCoupons?.[code];
+  if (!coupon) return res.status(404).json({ error: '未找到该优惠券', code: 'COUPON_NOT_FOUND' });
+  if (coupon.status !== 'issued' || coupon.remaining <= 0) {
+    return res.status(409).json({ error: '该优惠券已用尽或不可用', code: 'COUPON_EXHAUSTED' });
+  }
+
+  const count = Math.max(1, Math.min(50, Math.floor(Number(req.body?.count) || 1)));
+  const now = Date.now();
+  const applied = Math.min(count, Math.max(0, Number(coupon.remaining) || 0));
+  coupon.remaining -= applied;
+  if (!Array.isArray(coupon.usedSeats)) coupon.usedSeats = [];
+  for (let i = 0; i < applied; i += 1) {
+    coupon.usedSeats.push({ seatId: null, at: now, ticketNumber: null, note: 'manual-redeem' });
+  }
+  if (coupon.remaining <= 0) {
+    coupon.status = 'used';
+    coupon.usedAt = now;
+    coupon.usedBy = req.session?.username || 'unknown';
+  }
+
+  appendAudit({
+    action: 'ticket-coupon:redeem',
+    actor: req.session?.username || 'unknown',
+    detail: `核销优惠券 ${coupon.code} ${applied} 次（剩余 ${coupon.remaining}）`,
+  });
+  await saveState();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, coupon });
+});
+
 app.get('/api/projects/:projectId/checkin/stats', optionalSession, (req, res) => {
   const project = state.projects[req.params.projectId];
   if (!project) {
@@ -4903,6 +5024,9 @@ io.on('connection', (socket) => {
     if (seat.lockedBy !== socket.id) {
       return ack({ ok: false, message: '没有权限释放该座位' });
     }
+    if (seat.pendingOrderId) {
+      return ack({ ok: false, message: '该座位属于待签发订单，无法释放。请继续扫码签发或等待订单超时自动取消。' });
+    }
     if (seat.status === 'sold') {
       return ack({ ok: false, message: '座位已经签发' });
     }
@@ -4920,7 +5044,222 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('seat:issue', async ({ projectId, seatId: requestedId, ticketCode, couponCode }, ack = () => {}) => {
+  socket.on('tickets:checkout', async (payload, ack = () => {}) => {
+    const projectId = payload?.projectId;
+    const project = state.projects[projectId];
+    if (!project) return ack({ ok: false, message: '项目不存在' });
+    ensureProjectMetadata(project);
+
+    const seatIds = Array.isArray(payload?.seatIds) ? payload.seatIds.filter(Boolean) : [];
+    if (!seatIds.length) return ack({ ok: false, message: '请先选择座位' });
+    if (seatIds.length > 50) return ack({ ok: false, message: '单次结账座位数量过多（最多 50）' });
+
+    const paymentMethod = typeof payload?.paymentMethod === 'string' ? payload.paymentMethod.trim() : '';
+    if (!paymentMethod) return ack({ ok: false, message: '请选择支付方式' });
+
+    const useCoupon = payload?.useCoupon === true;
+    const normalizedCoupon = useCoupon ? normalizeCouponCode(payload?.couponCode || '') : '';
+    let coupon = null;
+    if (useCoupon) {
+      if (!normalizedCoupon) return ack({ ok: false, message: '请提供优惠券码' });
+      coupon = project.ticketCoupons?.[normalizedCoupon] || null;
+      if (!coupon) return ack({ ok: false, code: 'COUPON_NOT_FOUND', message: '未找到该优惠券' });
+      if (coupon.status !== 'issued' || coupon.remaining <= 0) {
+        return ack({ ok: false, code: 'COUPON_EXHAUSTED', message: '该优惠券已用尽或不可用' });
+      }
+    }
+
+    const uniqueSeatIds = Array.from(new Set(seatIds.map(String)));
+    const unlocks = [];
+    try {
+      for (const seatId of uniqueSeatIds) {
+        // eslint-disable-next-line no-await-in-loop
+        const unlock = await acquireLock(`seat:${projectId}:${seatId}`, { ttl: 8000, retry: 20, delay: 40 });
+        unlocks.push(unlock);
+      }
+    } catch {
+      for (const unlock of unlocks) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await unlock();
+        } catch {
+          // ignore
+        }
+      }
+      return ack({ ok: false, code: 'BUSY', message: '座位操作繁忙，请稍后重试' });
+    }
+
+    try {
+      const seats = uniqueSeatIds
+        .map((seatId) => ({ id: seatId, seat: project.seats?.[seatId] }))
+        .filter((entry) => entry.seat);
+      if (seats.length !== uniqueSeatIds.length) return ack({ ok: false, message: '存在无效座位' });
+
+      for (const { id: seatId, seat } of seats) {
+        if (!seat) return ack({ ok: false, message: `座位不存在：${seatId}` });
+        if (seat.status === 'sold') return ack({ ok: false, message: `座位已签发：${seat.seatLabel || seatId}` });
+        if (seat.lockedBy !== socket.id) return ack({ ok: false, message: '存在非本机锁定座位，请先重新锁座' });
+        if (seat.status !== 'locked') return ack({ ok: false, message: '座位未锁定，请先锁座' });
+        if (seat.pendingOrderId) return ack({ ok: false, message: '存在已发起结账但未完成的座位，请先完成扫码签发' });
+      }
+
+      // 统一生成票号/票码（用于后续扫码匹配）
+      seats.forEach(({ seat }) => {
+        if (!seat.ticketNumber) assignTicketNumberToSeat(project, seat, { force: false });
+        if (!seat.ticketCode) seat.ticketCode = seat.ticketNumber || generateTicketCode(project.id, seat.row, seat.col);
+      });
+
+      // 排序：按排号，再按座位号
+      const sorted = seats.slice().sort((a, b) => {
+        const ar = a.seat.row;
+        const br = b.seat.row;
+        if (ar !== br) return ar - br;
+        return a.seat.col - b.seat.col;
+      });
+
+      // 计算优惠券分配：优先高票价，受限票价跳过
+      const couponSeatIds = new Set();
+      let remainingToApply = coupon ? Math.max(0, Number(coupon.remaining) || 0) : 0;
+      if (coupon && remainingToApply > 0) {
+        const allowedPrices = Array.isArray(coupon.allowedPrices) ? coupon.allowedPrices : null;
+        sorted
+          .filter(({ seat }) => seat.price != null)
+          .filter(({ seat }) => {
+            if (!allowedPrices) return true;
+            const price = Number(seat.price);
+            return allowedPrices.some((p) => Number(p) === price);
+          })
+          .slice()
+          .sort((a, b) => (Number(b.seat.price) || 0) - (Number(a.seat.price) || 0))
+          .slice(0, Math.min(remainingToApply, sorted.length))
+          .forEach(({ id }) => couponSeatIds.add(id));
+      }
+
+      const multiplier = coupon ? formatDiscountMultiplier(coupon.discountRate) : 1;
+      const now = Date.now();
+
+      const orderSeq = project.ticketOrdersNext;
+      project.ticketOrdersNext += 1;
+      const stamp = new Date(now).toISOString().slice(2, 10).replace(/-/g, '');
+      const orderNo = `TK${stamp}${String(orderSeq).padStart(5, '0')}`;
+      const orderId = uuidv4();
+
+      let totalOriginal = 0;
+      let totalAfter = 0;
+      let appliedCount = 0;
+      const appliedSeatIds = [];
+
+      for (const { id: seatId, seat } of sorted) {
+        const basePrice = Number(seat.price);
+        const eligible = coupon && couponSeatIds.has(seatId) && coupon.remaining > 0;
+        const soldPrice = Number.isFinite(basePrice)
+          ? Math.round(basePrice * (eligible ? multiplier : 1) * 100) / 100
+          : null;
+
+      // 刷新锁超时：订单扫码签发可能持续较久
+      const expiresAt = now + PENDING_TICKET_ORDER_TIMEOUT_MS;
+      seat.lockExpiresAt = expiresAt;
+      seat.pendingOrderExpiresAt = expiresAt;
+
+        seat.pendingOrderId = orderId;
+        seat.pendingOrderNo = orderNo;
+        seat.pendingPaymentMethod = paymentMethod;
+        seat.pendingSoldPrice = soldPrice;
+        seat.pendingCouponCode = eligible ? normalizedCoupon : null;
+        seat.pendingSoldDiscount =
+          eligible && normalizedCoupon
+            ? {
+                type: 'coupon',
+                code: normalizedCoupon,
+                discountRate: coupon.discountRate,
+                originalPrice: Number.isFinite(basePrice) ? basePrice : null,
+              }
+            : null;
+
+        if (eligible) {
+          coupon.remaining -= 1;
+          appliedCount += 1;
+          appliedSeatIds.push(seatId);
+          if (!Array.isArray(coupon.usedSeats)) coupon.usedSeats = [];
+          coupon.usedSeats.push({ seatId, at: now, ticketNumber: seat.ticketNumber || null, note: `order:${orderNo}` });
+          if (coupon.remaining <= 0) {
+            coupon.status = 'used';
+            coupon.usedAt = now;
+            coupon.usedBy = socket.data.session?.username || 'unknown';
+          }
+        }
+
+        totalOriginal += Number.isFinite(basePrice) ? basePrice : 0;
+        totalAfter += Number.isFinite(soldPrice) ? soldPrice : 0;
+      }
+
+      const discountTotal = Math.max(0, Math.round((totalOriginal - totalAfter) * 100) / 100);
+      project.ticketOrders.push({
+        id: orderId,
+        orderNo,
+        status: 'pending',
+        createdAt: now,
+        createdBy: socket.data.session?.username || 'unknown',
+        expiresAt: now + PENDING_TICKET_ORDER_TIMEOUT_MS,
+        paymentMethod,
+        couponCode: normalizedCoupon || null,
+        appliedCouponCount: appliedCount,
+        appliedSeatIds,
+        seatIds: sorted.map((s) => s.id),
+        issuedSeatIds: [],
+        totalOriginal: Math.round(totalOriginal * 100) / 100,
+        total: Math.round(totalAfter * 100) / 100,
+        discount: discountTotal,
+        completedAt: null,
+      });
+
+      project.updatedAt = Date.now();
+      await saveState();
+      broadcastProject(project.id);
+
+      appendAudit({
+        action: 'ticket-order:start',
+        actor: socket.data.session?.username || 'unknown',
+        detail: `发起票务结账 ${orderNo}（${sorted.length} 座位，应付 ${Math.round(totalAfter * 100) / 100}，支付方式：${paymentMethod}${normalizedCoupon ? `，核销券：${normalizedCoupon}（抵扣 ${appliedCount} 张）` : ''}）`,
+      });
+
+      return ack({
+        ok: true,
+        order: {
+          id: orderId,
+          orderNo,
+          status: 'pending',
+          paymentMethod,
+          seatCount: sorted.length,
+          totalOriginal: Math.round(totalOriginal * 100) / 100,
+          discount: discountTotal,
+          total: Math.round(totalAfter * 100) / 100,
+          seatQueue: sorted.map((s) => s.id),
+        },
+        coupon: coupon
+          ? {
+              code: coupon.code,
+              remaining: coupon.remaining,
+              status: coupon.status,
+              discountRate: coupon.discountRate,
+              allowedPrices: coupon.allowedPrices || null,
+              appliedCount,
+            }
+          : null,
+      });
+    } finally {
+      for (const unlock of unlocks) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await unlock();
+        } catch {
+          // ignore
+        }
+      }
+    }
+  });
+
+  socket.on('seat:issue', async ({ projectId, seatId: requestedId, ticketCode, couponCode, orderId }, ack = () => {}) => {
     const project = state.projects[projectId];
     if (!project) {
       return ack({ ok: false, message: '项目不存在' });
@@ -4943,7 +5282,62 @@ io.on('connection', (socket) => {
     if (seat.lockedBy !== socket.id) {
       return ack({ ok: false, message: '当前终端未锁定该座位' });
     }
+
     const now = Date.now();
+
+    if (orderId) {
+      if (!seat.pendingOrderId || seat.pendingOrderId !== orderId) {
+        return ack({ ok: false, message: '该座位不属于当前订单' });
+      }
+      if (seat.status !== 'locked') {
+        return ack({ ok: false, message: '座位未锁定，无法签发' });
+      }
+      const soldPrice = seat.pendingSoldPrice ?? null;
+      seat.status = 'sold';
+      seat.lockedBy = null;
+      seat.lockExpiresAt = null;
+      seat.issuedAt = now;
+      seat.soldAt = now;
+      seat.soldBy = socket.data.session?.username || 'unknown';
+      seat.soldPrice = soldPrice;
+      seat.soldPaymentMethod = seat.pendingPaymentMethod || null;
+      seat.soldOrderId = orderId;
+      seat.soldDiscount = seat.pendingSoldDiscount || null;
+      seat.pendingOrderId = null;
+      seat.pendingOrderNo = null;
+      seat.pendingPaymentMethod = null;
+      seat.pendingSoldPrice = null;
+      seat.pendingCouponCode = null;
+      seat.pendingSoldDiscount = null;
+
+      const order = (project.ticketOrders || []).find((o) => o && o.id === orderId);
+      if (order) {
+        if (!Array.isArray(order.issuedSeatIds)) order.issuedSeatIds = [];
+        if (!order.issuedSeatIds.includes(requestedId)) order.issuedSeatIds.push(requestedId);
+        if (Array.isArray(order.seatIds) && order.issuedSeatIds.length >= order.seatIds.length) {
+          order.status = 'completed';
+          order.completedAt = now;
+        }
+      }
+
+      project.updatedAt = Date.now();
+      await saveState();
+      broadcastProject(project.id);
+      return ack({
+        ok: true,
+        seat: buildSeatCheckinPayload(project, seat),
+        order: order
+          ? {
+              id: order.id,
+              orderNo: order.orderNo,
+              status: order.status,
+              issuedCount: Array.isArray(order.issuedSeatIds) ? order.issuedSeatIds.length : 0,
+              seatCount: Array.isArray(order.seatIds) ? order.seatIds.length : 0,
+            }
+          : null,
+      });
+    }
+
     let appliedCoupon = null;
     const normalizedCoupon = normalizeCouponCode(couponCode || '');
     if (normalizedCoupon) {
@@ -5009,7 +5403,7 @@ io.on('connection', (socket) => {
         detail: `使用优惠券 ${appliedCoupon.code}（剩余 ${appliedCoupon.remaining}）`,
       });
     }
-    return ack({ ok: true, coupon: appliedCoupon, seat: serializeSeatForCheckin(seat) });
+    return ack({ ok: true, coupon: appliedCoupon, seat: buildSeatCheckinPayload(project, seat) });
     } finally {
       try {
         if (unlock) await unlock();
@@ -5067,6 +5461,9 @@ io.on('connection', (socket) => {
       let changed = false;
       Object.values(project.seats).forEach((seat) => {
         if (seat.lockedBy === id && seat.status !== 'sold') {
+          if (seat.pendingOrderId) {
+            cancelPendingTicketOrder(project, seat.pendingOrderId, { actor: 'system', reason: 'socket-disconnect' });
+          }
           releaseSeatLock(seat);
           changed = true;
         }
@@ -5109,11 +5506,11 @@ io.on('connection', (socket) => {
   await saveState();
   const startListen = (port, tries = 0) => {
     server
-      .listen(port, HOST, () => {
+      .listen(port, () => {
         if (isHttps) {
-          console.log(`Server listening on https://${HOST}:${port}`);
+          console.log(`Server listening on https://localhost:${port}`);
         } else {
-          console.log(`Server listening on http://${HOST}:${port} (no cert found, fallback HTTP)`);
+          console.log(`Server listening on http://localhost:${port} (no cert found, fallback HTTP)`);
         }
       })
       .on('error', (err) => {
