@@ -752,7 +752,13 @@ document.addEventListener('click', (event) => {
 });
 
 const downloadTextFile = (filename, content, mime = 'text/plain') => {
-  const blob = new Blob([content], { type: mime });
+  const isCsv = (mime && mime.includes('text/csv')) || /\.csv$/i.test(filename);
+  const normalizedMime = isCsv ? 'text/csv;charset=utf-8' : mime;
+  let payload = content;
+  if (isCsv && typeof payload === 'string' && !payload.startsWith('\ufeff')) {
+    payload = `\ufeff${payload}`;
+  }
+  const blob = new Blob([payload], { type: normalizedMime });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -4316,7 +4322,7 @@ if (btnExportOrdersCsv) {
       const csvText = await response.text();
       const date = new Date().toISOString().slice(0, 10);
       // 纯 CSV 下载
-      const bomCsv = '\ufeff' + csvText; // 加 BOM 防止 Excel 乱码
+      const bomCsv = csvText.startsWith('\ufeff') ? csvText : `\ufeff${csvText}`; // 加 BOM 防止 Excel 乱码
       downloadBlob(`merch-orders-${date}.csv`, new Blob([bomCsv], { type: 'text/csv;charset=utf-8' }));
       setOrderFormStatus('CSV 导出完成。');
       showToast('CSV 导出完成', 'success');
@@ -4339,7 +4345,7 @@ if (btnExportOrdersXls) {
       if (!response.ok) throw new Error('导出失败');
       const csvText = await response.text();
       const date = new Date().toISOString().slice(0, 10);
-      const bomCsv = '\ufeff' + csvText;
+      const bomCsv = csvText.startsWith('\ufeff') ? csvText : `\ufeff${csvText}`;
       const xlsBlob = new Blob([bomCsv], { type: 'application/vnd.ms-excel' });
       downloadBlob(`merch-orders-${date}.xls`, xlsBlob);
       setOrderFormStatus('Excel 导出完成。');

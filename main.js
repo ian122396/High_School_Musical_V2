@@ -9,7 +9,7 @@ const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
 const bcrypt = require('bcryptjs');
-const { createCanvas, loadImage, Image } = require('canvas');
+const { createCanvas, loadImage, Image, registerFont } = require('canvas');
 const crypto = require('crypto');
 const os = require('os');
 
@@ -45,6 +45,25 @@ const CONFIRM_TTL_MS = 60 * 1000;
 const confirmChallenges = new Map();
 let redisClient = null;
 let redisAvailable = false;
+const PDF_FONT_FAMILY = 'NotoSansCJKsc';
+const PDF_FONT_STACK = `"${PDF_FONT_FAMILY}","Helvetica","Arial",sans-serif`;
+const PDF_FONT_REGULAR_PATH = path.join(__dirname, 'assets', 'fonts', 'NotoSansCJKsc-Regular.otf');
+const PDF_FONT_BOLD_PATH = path.join(__dirname, 'assets', 'fonts', 'NotoSansCJKsc-Bold.otf');
+
+const registerPdfFonts = () => {
+  try {
+    if (fsSync.existsSync(PDF_FONT_REGULAR_PATH)) {
+      registerFont(PDF_FONT_REGULAR_PATH, { family: PDF_FONT_FAMILY, weight: 'normal' });
+    }
+    if (fsSync.existsSync(PDF_FONT_BOLD_PATH)) {
+      registerFont(PDF_FONT_BOLD_PATH, { family: PDF_FONT_FAMILY, weight: 'bold' });
+    }
+  } catch (error) {
+    console.warn('PDF 字体注册失败，将回退到系统字体：', error.message);
+  }
+};
+
+registerPdfFonts();
 
 const createServerWithTls = () => {
   try {
@@ -2928,12 +2947,12 @@ app.get('/api/merch/orders/export/csv', requireRole('admin'), (req, res) => {
       });
       lines.push(cols.join(','));
     });
-  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   res.setHeader('Content-Disposition', 'attachment; filename="merch-orders.csv"');
-  res.send(lines.join('\n'));
+  res.send(`\ufeff${lines.join('\n')}`);
 });
 
 app.put('/api/merch/orders/:orderId', requireRole('admin'), async (req, res) => {
@@ -3057,13 +3076,13 @@ app.get('/api/merch/orders/export/pdf', requireRole('admin'), async (req, res) =
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, pageWidth, pageHeight);
     ctx.fillStyle = '#111';
-    ctx.font = 'bold 16px "Helvetica","Arial",sans-serif';
+    ctx.font = `bold 16px ${PDF_FONT_STACK}`;
     ctx.fillText('文创订单导出', margin, margin);
-    ctx.font = '12px "Helvetica","Arial",sans-serif';
+    ctx.font = `12px ${PDF_FONT_STACK}`;
     ctx.fillText(`生成时间：${new Date().toLocaleString()}`, margin, margin + 18);
   };
 
-  const drawText = (text, x, yPos, font = '12px "Helvetica","Arial",sans-serif') => {
+  const drawText = (text, x, yPos, font = `12px ${PDF_FONT_STACK}`) => {
     ctx.font = font;
     ctx.fillStyle = '#111';
     ctx.fillText(text, x, yPos);
@@ -3093,7 +3112,7 @@ app.get('/api/merch/orders/export/pdf', requireRole('admin'), async (req, res) =
       `序号: ${idx + 1}    订单编号: ${order.orderNumber || order.id}`,
       margin + 8,
       y + 4,
-      'bold 12px "Helvetica","Arial",sans-serif'
+      `bold 12px ${PDF_FONT_STACK}`
     );
     drawText(`时间: ${order.createdAt ? new Date(order.createdAt).toLocaleString() : '-'}`, margin + 8, y + 24);
     drawText(`操作人: ${order.handledBy || '-'}`, margin + 8, y + 44);
@@ -3106,7 +3125,7 @@ app.get('/api/merch/orders/export/pdf', requireRole('admin'), async (req, res) =
     );
     drawText(`备注: ${order.note || '-'}`, margin + 8, y + 124);
     const labelY = y + 140;
-    drawText('商品明细:', margin + 8, labelY, 'bold 12px "Helvetica","Arial",sans-serif');
+    drawText('商品明细:', margin + 8, labelY, `bold 12px ${PDF_FONT_STACK}`);
 
     let itemY = labelY + 14;
     for (const item of items) {
@@ -3222,11 +3241,11 @@ app.get('/api/merch/orders/:orderId/statement.pdf', requireRole('admin'), async 
 
   // ---------- styles ----------
   const fonts = {
-    title: 'bold 16px "Helvetica","Arial",sans-serif',
-    subtitle: 'bold 11px "Helvetica","Arial",sans-serif',
-    bold: 'bold 11px "Helvetica","Arial",sans-serif',
-    normal: '11px "Helvetica","Arial",sans-serif',
-    small: '9.5px "Helvetica","Arial",sans-serif',
+    title: `bold 16px ${PDF_FONT_STACK}`,
+    subtitle: `bold 11px ${PDF_FONT_STACK}`,
+    bold: `bold 11px ${PDF_FONT_STACK}`,
+    normal: `11px ${PDF_FONT_STACK}`,
+    small: `9.5px ${PDF_FONT_STACK}`,
   };
   const colors = {
     black: '#111111',
@@ -3559,7 +3578,7 @@ app.get('/api/merch/orders/:orderId/statement.pdf', requireRole('admin'), async 
   // 右侧金额重点（高级感：大号右对齐）
   const rightInfoX2 = width / 2 + 20;
   text('总金额', rightInfoX2, ry2, fonts.small, colors.gray);
-  text(money(total), width - margin - 6, ry2 + 6, 'bold 15px "Helvetica","Arial"', colors.black, 'right');
+  text(money(total), width - margin - 6, ry2 + 6, `bold 15px ${PDF_FONT_STACK}`, colors.black, 'right');
   text(`支付方式：${paymentMethod}`, rightInfoX2, ry2 + lineH * 2, fonts.normal);
 
   // 收据联条码（可扫）
@@ -3972,9 +3991,9 @@ app.get('/api/projects/:projectId/export/csv', requireRole('admin'), (req, res) 
     return res.status(404).json({ error: '项目不存在' });
   }
   const csv = exportProjectCsv(project);
-  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="project-${project.id}.csv"`);
-  res.send(csv);
+  res.send(`\ufeff${csv}`);
 });
 
 app.get('/api/projects/:projectId/export/png', requireRole('admin'), async (req, res) => {

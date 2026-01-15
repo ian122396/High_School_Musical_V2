@@ -36425,85 +36425,85 @@
         "id": "a8f9b1f9-98ec-4c7b-80ee-a3dfac5bd642",
         "name": "文创书签",
         "price": 14.9,
-        "stock": 97,
+        "stock": 95,
         "description": "",
         "imageData": null,
         "imagePath": "/uploads/merch/4f23a59d-7a4a-4382-b532-5ef165f4611d.png",
         "enabled": true,
         "createdAt": 1765802053700,
-        "updatedAt": 1768450140868
+        "updatedAt": 1768452009518
       },
       "45570d4c-7792-44b8-8ce9-436062968178": {
         "id": "45570d4c-7792-44b8-8ce9-436062968178",
         "name": "腾飞喷泉冰箱贴",
         "price": 9.9,
-        "stock": 100,
+        "stock": 97,
         "description": "",
         "imageData": null,
         "imagePath": "/uploads/merch/06110625-8c0b-4212-b25c-a540210fb2ae.png",
         "enabled": true,
         "createdAt": 1765802099348,
-        "updatedAt": 1765802099348
+        "updatedAt": 1768452009518
       },
       "5b4aabea-525b-4bec-b514-668c2ff92af3": {
         "id": "5b4aabea-525b-4bec-b514-668c2ff92af3",
         "name": "拼图盲盒（不含相框）",
         "price": 9.9,
-        "stock": 100,
+        "stock": 97,
         "description": "",
         "imageData": null,
         "imagePath": "/uploads/merch/9926d00b-5c0d-4364-8858-a2f21a980c23.png",
         "enabled": true,
         "createdAt": 1765802133631,
-        "updatedAt": 1765802133631
+        "updatedAt": 1768452009518
       },
       "ed59d9d4-fc07-4c57-92dc-de217d6f1e96": {
         "id": "ed59d9d4-fc07-4c57-92dc-de217d6f1e96",
         "name": "文创拼图（含相框）",
         "price": 14.9,
-        "stock": 100,
+        "stock": 97,
         "description": "",
         "imageData": null,
         "imagePath": "/uploads/merch/5130afe4-fb1a-480c-ae92-e96d6d56d24d.png",
         "enabled": true,
         "createdAt": 1765802150899,
-        "updatedAt": 1765802150899
+        "updatedAt": 1768452009518
       },
       "985f6e5c-c480-4cd2-9c0e-67e5cccfca75": {
         "id": "985f6e5c-c480-4cd2-9c0e-67e5cccfca75",
         "name": "杜邦纸袋",
         "price": 24.9,
-        "stock": 100,
+        "stock": 97,
         "description": "",
         "imageData": null,
         "imagePath": "/uploads/merch/fdd64a24-c9fc-4cb0-bd64-da340955f6b3.png",
         "enabled": true,
         "createdAt": 1765802178017,
-        "updatedAt": 1765802178017
+        "updatedAt": 1768452009518
       },
       "e27950ce-3910-4ea1-b8e4-7f3966d08e14": {
         "id": "e27950ce-3910-4ea1-b8e4-7f3966d08e14",
         "name": "帆布袋",
         "price": 9.9,
-        "stock": 100,
+        "stock": 97,
         "description": "",
         "imageData": null,
         "imagePath": "/uploads/merch/8a16bdb0-b261-423a-bae5-ad1ed004f515.png",
         "enabled": true,
         "createdAt": 1765802197745,
-        "updatedAt": 1765802197745
+        "updatedAt": 1768452009518
       },
       "2a89e356-7f3f-4e2c-9890-c13474a185a8": {
         "id": "2a89e356-7f3f-4e2c-9890-c13474a185a8",
         "name": "流沙冰箱贴",
         "price": 24.9,
-        "stock": 100,
+        "stock": 95,
         "description": "",
         "imageData": null,
         "imagePath": "/uploads/merch/affa15e3-7cb1-49ba-8d82-ba000f012728.png",
         "enabled": true,
         "createdAt": 1765802218633,
-        "updatedAt": 1765803770937
+        "updatedAt": 1768452009518
       }
     },
     "checkoutModes": {
@@ -36519,59 +36519,22 @@
         "enabled": true,
         "createdAt": 1765942175124,
         "updatedAt": 1765942175124
+      },
+      "437096b2-d7b9-462a-b281-65ecd4d1e9da": {
+        "id": "437096b2-d7b9-462a-b281-65ecd4d1e9da",
+        "name": "工作人员九折",
+        "type": "discount",
+        "value": 0.9,
+        "threshold": null,
+        "cutAmount": null,
+        "stackLimit": null,
+        "description": "",
+        "enabled": true,
+        "createdAt": 1768451983782,
+        "updatedAt": 1768451983782
       }
     },
     "orders": [
-      {
-        "id": "a848f0e7-4d33-4c5a-a76e-e24fe7c188b4",
-        "orderNumber": "2973817240161",
-        "orderType": "stock",
-        "status": "active",
-        "voucherCode": null,
-        "items": [
-          {
-            "productId": "a8f9b1f9-98ec-4c7b-80ee-a3dfac5bd642",
-            "name": "文创书签",
-            "quantity": 1,
-            "unitPrice": 14.9,
-            "subtotal": 14.9
-          }
-        ],
-        "checkoutModeId": null,
-        "checkoutModeName": "原价",
-        "discount": 0,
-        "totalBefore": 14.9,
-        "totalAfter": 14.9,
-        "handledBy": "DAIWEIHANG",
-        "paymentMethod": "现金（人民币）",
-        "note": "",
-        "createdAt": 1768448924321
-      },
-      {
-        "id": "4d241d2c-744a-42fe-8bf3-032e2a5efbdf",
-        "orderNumber": "2973828640171",
-        "orderType": "stock",
-        "status": "active",
-        "voucherCode": null,
-        "items": [
-          {
-            "productId": "a8f9b1f9-98ec-4c7b-80ee-a3dfac5bd642",
-            "name": "文创书签",
-            "quantity": 1,
-            "unitPrice": 14.9,
-            "subtotal": 14.9
-          }
-        ],
-        "checkoutModeId": null,
-        "checkoutModeName": "原价",
-        "discount": 0,
-        "totalBefore": 14.9,
-        "totalAfter": 14.9,
-        "handledBy": "DAIWEIHANG",
-        "paymentMethod": "现金（人民币）",
-        "note": "",
-        "createdAt": 1768450064303
-      },
       {
         "id": "278ca395-c63a-4232-9650-454115caaaea",
         "orderNumber": "2973829400182",
@@ -36596,13 +36559,175 @@
         "paymentMethod": "现金（人民币）",
         "note": "",
         "createdAt": 1768450140868
+      },
+      {
+        "id": "608c6fd0-a277-47bb-93d1-6b5da52c52e1",
+        "orderNumber": "2973847380192",
+        "orderType": "stock",
+        "status": "active",
+        "voucherCode": null,
+        "items": [
+          {
+            "productId": "45570d4c-7792-44b8-8ce9-436062968178",
+            "name": "腾飞喷泉冰箱贴",
+            "quantity": 1,
+            "unitPrice": 9.9,
+            "subtotal": 9.9
+          },
+          {
+            "productId": "5b4aabea-525b-4bec-b514-668c2ff92af3",
+            "name": "拼图盲盒（不含相框）",
+            "quantity": 1,
+            "unitPrice": 9.9,
+            "subtotal": 9.9
+          },
+          {
+            "productId": "ed59d9d4-fc07-4c57-92dc-de217d6f1e96",
+            "name": "文创拼图（含相框）",
+            "quantity": 1,
+            "unitPrice": 14.9,
+            "subtotal": 14.9
+          },
+          {
+            "productId": "985f6e5c-c480-4cd2-9c0e-67e5cccfca75",
+            "name": "杜邦纸袋",
+            "quantity": 1,
+            "unitPrice": 24.9,
+            "subtotal": 24.9
+          },
+          {
+            "productId": "e27950ce-3910-4ea1-b8e4-7f3966d08e14",
+            "name": "帆布袋",
+            "quantity": 1,
+            "unitPrice": 9.9,
+            "subtotal": 9.9
+          },
+          {
+            "productId": "2a89e356-7f3f-4e2c-9890-c13474a185a8",
+            "name": "流沙冰箱贴",
+            "quantity": 3,
+            "unitPrice": 24.9,
+            "subtotal": 74.7
+          },
+          {
+            "productId": "a8f9b1f9-98ec-4c7b-80ee-a3dfac5bd642",
+            "name": "文创书签",
+            "quantity": 1,
+            "unitPrice": 14.9,
+            "subtotal": 14.9
+          }
+        ],
+        "checkoutModeId": "9ba5fa5d-3caa-4afa-9437-cfc77ec1b273",
+        "checkoutModeName": "原价",
+        "discount": 0,
+        "totalBefore": 159.1,
+        "totalAfter": 159.1,
+        "handledBy": "DAIWEIHANG",
+        "paymentMethod": "现金（人民币）",
+        "note": "",
+        "createdAt": 1768451938598
+      },
+      {
+        "id": "c7cb0048-a012-4b2f-9d98-31ae3a4f9179",
+        "orderNumber": "2973848090201",
+        "orderType": "stock",
+        "status": "active",
+        "voucherCode": null,
+        "items": [
+          {
+            "productId": "2a89e356-7f3f-4e2c-9890-c13474a185a8",
+            "name": "流沙冰箱贴",
+            "quantity": 2,
+            "unitPrice": 24.9,
+            "subtotal": 49.8
+          },
+          {
+            "productId": "e27950ce-3910-4ea1-b8e4-7f3966d08e14",
+            "name": "帆布袋",
+            "quantity": 2,
+            "unitPrice": 9.9,
+            "subtotal": 19.8
+          },
+          {
+            "productId": "985f6e5c-c480-4cd2-9c0e-67e5cccfca75",
+            "name": "杜邦纸袋",
+            "quantity": 2,
+            "unitPrice": 24.9,
+            "subtotal": 49.8
+          },
+          {
+            "productId": "ed59d9d4-fc07-4c57-92dc-de217d6f1e96",
+            "name": "文创拼图（含相框）",
+            "quantity": 2,
+            "unitPrice": 14.9,
+            "subtotal": 29.8
+          },
+          {
+            "productId": "5b4aabea-525b-4bec-b514-668c2ff92af3",
+            "name": "拼图盲盒（不含相框）",
+            "quantity": 2,
+            "unitPrice": 9.9,
+            "subtotal": 19.8
+          },
+          {
+            "productId": "45570d4c-7792-44b8-8ce9-436062968178",
+            "name": "腾飞喷泉冰箱贴",
+            "quantity": 2,
+            "unitPrice": 9.9,
+            "subtotal": 19.8
+          },
+          {
+            "productId": "a8f9b1f9-98ec-4c7b-80ee-a3dfac5bd642",
+            "name": "文创书签",
+            "quantity": 1,
+            "unitPrice": 14.9,
+            "subtotal": 14.9
+          }
+        ],
+        "checkoutModeId": "437096b2-d7b9-462a-b281-65ecd4d1e9da",
+        "checkoutModeName": "工作人员九折",
+        "discount": 20.37,
+        "totalBefore": 203.7,
+        "totalAfter": 183.33,
+        "handledBy": "DAIWEIHANG",
+        "paymentMethod": "现金（人民币）",
+        "note": "",
+        "createdAt": 1768452009521
       }
     ],
-    "_orderNoSeed": 18,
+    "_orderNoSeed": 20,
     "vouchers": {},
     "voucherRedemptions": []
   },
   "auditLog": [
+    {
+      "id": "b4974d52-ff70-4e6d-b669-8c0983f0f19d",
+      "createdAt": 1768452009521,
+      "actor": "DAIWEIHANG",
+      "action": "merch-order:create",
+      "detail": "创建文创订单 c7cb0048-a012-4b2f-9d98-31ae3a4f9179"
+    },
+    {
+      "id": "91e24298-bd65-4b8a-8a49-225536adbba7",
+      "createdAt": 1768451938598,
+      "actor": "DAIWEIHANG",
+      "action": "merch-order:create",
+      "detail": "创建文创订单 608c6fd0-a277-47bb-93d1-6b5da52c52e1"
+    },
+    {
+      "id": "efba36d3-be97-47f6-ba43-0e428df7e49f",
+      "createdAt": 1768451507828,
+      "actor": "SuperAdmin",
+      "action": "merch-order:delete",
+      "detail": "删除订单 4d241d2c-744a-42fe-8bf3-032e2a5efbdf"
+    },
+    {
+      "id": "cfe4cfad-fef2-49ad-94e9-d815704bd831",
+      "createdAt": 1768451502178,
+      "actor": "SuperAdmin",
+      "action": "merch-order:delete",
+      "detail": "删除订单 a848f0e7-4d33-4c5a-a76e-e24fe7c188b4"
+    },
     {
       "id": "bb590040-e45c-4568-98b7-55b68b803d8e",
       "createdAt": 1768450140868,

@@ -63,6 +63,12 @@ const downloadBlob = (filename, blob) => {
   URL.revokeObjectURL(url);
 };
 
+const downloadCsvText = (filename, text) => {
+  const payload = text.startsWith('\ufeff') ? text : `\ufeff${text}`;
+  const blob = new Blob([payload], { type: 'text/csv;charset=utf-8' });
+  downloadBlob(filename, blob);
+};
+
 const updatePrompt = (label) => {
   sessionLabel = label || sessionLabel || 'guest';
   if (promptEl) {
@@ -465,8 +471,13 @@ const commands = {
     const fmt = (type || 'csv').toLowerCase();
     if (!['csv', 'png'].includes(fmt)) throw new Error('用法：seats-export <csv|png>');
     const res = await authFetch(`/api/projects/${id}/export/${fmt}`);
-    const blob = await res.blob();
-    downloadBlob(`project-${id}-seats.${fmt}`, blob);
+    if (fmt === 'csv') {
+      const text = await res.text();
+      downloadCsvText(`project-${id}-seats.${fmt}`, text);
+    } else {
+      const blob = await res.blob();
+      downloadBlob(`project-${id}-seats.${fmt}`, blob);
+    }
     log(`已导出座位 ${fmt.toUpperCase()}`, 'success');
   },
   'seat-price-lock': async (...args) => {
@@ -750,8 +761,8 @@ const commands = {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || '导出失败');
     }
-    const blob = await res.blob();
-    downloadBlob(`merch-orders-${new Date().toISOString().slice(0, 10)}.csv`, blob);
+    const text = await res.text();
+    downloadCsvText(`merch-orders-${new Date().toISOString().slice(0, 10)}.csv`, text);
     log('CSV 导出完成', 'success');
   },
   'audit-logs': async (...args) => {
